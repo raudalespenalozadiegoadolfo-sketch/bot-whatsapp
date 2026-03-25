@@ -1,30 +1,32 @@
 from flask import Flask, request
 import requests
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(_name_)
 
-# 🔑 CONFIG
+# 🔐 CONFIG
 ACCESS_TOKEN = "EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn"
 PHONE_NUMBER_ID = "1059311390588707"
 VERIFY_TOKEN = "my_token_secreto"
-ADMIN_NUMBER = "523171234529"
+ADMIN_NUMBER = "523171234529"  # TU NÚMERO (523171234529)
 
-
-# 🧠 ESTADO
+# 🧠 MEMORIA
 usuarios = {}
+ultimo_pedido = {}
 
-# 📋 MENÚ
+# 🍤 MENÚ
 menu = {
     "1": {"nombre": "Docena de almejas", "precio": 120},
     "2": {"nombre": "Docena de ostiones", "precio": 150},
-    "3": {"nombre": "Litro ceviche camarón", "precio": 130},
-    "4": {"nombre": "Litro ceviche pescado", "precio": 110},
-    "5": {"nombre": "Litro aguachile", "precio": 140}
+    "3": {"nombre": "Litro de ceviche de camarón", "precio": 130},
+    "4": {"nombre": "Litro de ceviche de pescado", "precio": 110},
+    "5": {"nombre": "Litro de aguachile de camarón", "precio": 140}
 }
 
-# 📩 ENVIAR MENSAJE
-def enviar_mensaje(numero, mensaje):
-    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+# 📤 ENVIAR MENSAJE
+def enviar_mensaje(numero, texto):
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {ACCESS_TOKEN}",
         "Content-Type": "application/json"
@@ -33,138 +35,173 @@ def enviar_mensaje(numero, mensaje):
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "text",
-        "text": {"body": mensaje}
+        "text": {"body": texto}
     }
     requests.post(url, headers=headers, json=data)
 
 
-# 🔍 VERIFICACIÓN WEBHOOK
-@app.route('/webhook', methods=['GET'])
+# 📍 ENVIAR UBICACIÓN
+def enviar_ubicacion(numero):
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "text",
+        "text": {"body": "📍 Envíanos tu ubicación"}
+    }
+    requests.post(url, headers=headers, json=data)
 
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
 
-    if token == VERIFY_TOKEN:
-        return challenge
-    else:
-        return "Error", 403
+# 📄 GENERAR PDF
+def generar_pdf(nombre, numero, producto, cantidad, total):
+    archivo = "pedido.pdf"
+    doc = SimpleDocTemplate(archivo)
+    styles = getSampleStyleSheet()
+
+    contenido = [
+        Paragraph("Pedido Mariscos", styles["Title"]),
+        Spacer(1, 12),
+        Paragraph(f"Cliente: {nombre}", styles["Normal"]),
+        Paragraph(f"Tel: {numero}", styles["Normal"]),
+        Spacer(1, 12),
+        Paragraph(f"{producto} x{cantidad} = ${total}", styles["Normal"]),
+    ]
+
+    doc.build(contenido)
+    return archivo
 
 
-# 🤖 LÓGICA PRINCIPAL
-@app.route('/webhook', methods=['POST'])
+# 📤 ENVIAR DOCUMENTO
+def enviar_documento(numero, archivo):
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}"
+    }
+
+    files = {
+        "file": (archivo, open(archivo, "rb"), "application/pdf")
+    }
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "document"
+    }
+
+    requests.post(url, headers=headers, files=files, data=data)
+
+
+# 🌐 WEBHOOK (TODO EN UNO)
+@app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
-    data = request.json
 
-    try:
-        mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
-        numero = mensaje["from"]
+    # 🔐 VERIFICACIÓN META
+    if request.method == 'GET':
+        token = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
 
-        # TEXTO
-        if "text" in mensaje:
-            texto = mensaje["text"]["body"].lower()
+        if token == VERIFY_TOKEN:
+            return challenge, 200
         else:
-            texto = ""
+            return "Error", 403
 
-        # CREAR USUARIO
-        if numero not in usuarios:
-            usuarios[numero] = {
-                "paso": "inicio",
-                "nombre": "",
-                "pedido": [],
-                "ubicacion": None
-            }
+    # 📩 MENSAJES
+    if request.method == 'POST':
+        data = request.get_json()
 
-        estado = usuarios[numero]["paso"]
+        try:
+            mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
+            numero = mensaje["from"]
 
-        # 👋 INICIO
-        if texto in ["hola", "menu", "inicio"] or estado == "inicio":
-            enviar_mensaje(numero, "👋 ¡Bienvenido!\n\n¿Nombre del pedido?")
-            usuarios[numero]["paso"] = "nombre"
+            # TEXTO
+            if "text" in mensaje:
+                texto = mensaje["text"]["body"]
 
-        # 🧾 NOMBRE
-        elif estado == "nombre":
-            usuarios[numero]["nombre"] = texto
+                # NUEVO USUARIO
+                if numero not in usuarios:
+                    usuarios[numero] = {"estado": "nombre"}
+                    enviar_mensaje(numero, "👋 Hola, ¿Nombre del pedido?")
+                    return "ok", 200
 
-            enviar_mensaje(numero,
-                "📋 Menú:\n\n"
-                "1️⃣ Docena de almejas - $120\n"
-                "2️⃣ Docena de ostiones - $150\n"
-                "3️⃣ Litro ceviche camarón - $130\n"
-                "4️⃣ Litro ceviche pescado - $110\n"
-                "5️⃣ Litro aguachile - $140\n\n"
-                "👉 Escribe los números (ej: 135)"
-            )
+                estado = usuarios[numero]["estado"]
 
-            usuarios[numero]["paso"] = "menu"
+                # NOMBRE
+                if estado == "nombre":
+                    usuarios[numero]["nombre"] = texto
+                    usuarios[numero]["estado"] = "menu"
 
-        # 🔢 MENÚ
-        elif estado == "menu":
-            seleccion = list(texto)
-            usuarios[numero]["pedido"] = []
+                    menu_texto = "📋 Menú:\n"
+                    for k, v in menu.items():
+                        menu_texto += f"{k}. {v['nombre']} - ${v['precio']}\n"
 
-            for item in seleccion:
-                if item in menu:
-                    usuarios[numero]["pedido"].append({
-                        "id": item,
-                        "cantidad": 0
-                    })
+                    enviar_mensaje(numero, menu_texto + "\nElige opción (ej: 1)")
+                    return "ok", 200
 
-            usuarios[numero]["indice"] = 0
-            usuarios[numero]["paso"] = "cantidad"
+                # MENÚ
+                if estado == "menu":
+                    if texto in menu:
+                        usuarios[numero]["producto"] = texto
+                        usuarios[numero]["estado"] = "cantidad"
+                        enviar_mensaje(numero, "¿Cuántos?")
+                    else:
+                        enviar_mensaje(numero, "Opción inválida")
+                    return "ok", 200
 
-            producto = menu[usuarios[numero]["pedido"][0]["id"]]["nombre"]
-            enviar_mensaje(numero, f"¿Cuántas de {producto}?")
+                # CANTIDAD
+                if estado == "cantidad":
+                    cantidad = int(texto)
+                    prod = menu[usuarios[numero]["producto"]]
 
-        # 📦 CANTIDADES
-        elif estado == "cantidad":
-            i = usuarios[numero]["indice"]
-            usuarios[numero]["pedido"][i]["cantidad"] = int(texto)
+                    total = cantidad * prod["precio"]
 
-            usuarios[numero]["indice"] += 1
+                    usuarios[numero]["cantidad"] = cantidad
+                    usuarios[numero]["total"] = total
+                    usuarios[numero]["estado"] = "ubicacion"
 
-            if usuarios[numero]["indice"] < len(usuarios[numero]["pedido"]):
-                siguiente = usuarios[numero]["pedido"][usuarios[numero]["indice"]]["id"]
-                producto = menu[siguiente]["nombre"]
-                enviar_mensaje(numero, f"¿Cuántas de {producto}?")
-            else:
-                enviar_mensaje(numero, "📍 Envíanos tu ubicación")
-                usuarios[numero]["paso"] = "ubicacion"
+                    enviar_ubicacion(numero)
+                    return "ok", 200
 
-        # 📍 UBICACIÓN
-        elif "location" in mensaje:
-            usuarios[numero]["ubicacion"] = mensaje["location"]
+            # UBICACIÓN
+            if "location" in mensaje:
+                lat = mensaje["location"]["latitude"]
+                lon = mensaje["location"]["longitude"]
 
-            total = 0
-            resumen = f"🧾 Pedido de {usuarios[numero]['nombre']}\n\n"
+                usuarios[numero]["lat"] = lat
+                usuarios[numero]["lon"] = lon
 
-            for item in usuarios[numero]["pedido"]:
-                prod = menu[item["id"]]
-                subtotal = prod["precio"] * item["cantidad"]
-                total += subtotal
-                resumen += f"{prod['nombre']} x{item['cantidad']} = ${subtotal}\n"
+                nombre = usuarios[numero]["nombre"]
+                prod = menu[usuarios[numero]["producto"]]
+                cantidad = usuarios[numero]["cantidad"]
+                total = usuarios[numero]["total"]
 
-            resumen += f"\n💰 TOTAL: ${total}"
+                archivo = generar_pdf(nombre, numero, prod["nombre"], cantidad, total)
 
-            # 📲 CLIENTE
-            enviar_mensaje(numero, "📦 Pedido listo\n\n" + resumen)
-            enviar_mensaje(numero, "✅ Pedido confirmado")
+                enviar_documento(numero, archivo)
 
-            # 🔥 ADMIN (TÚ)
-            enviar_mensaje(ADMIN_NUMBER,
-                f"🚨 NUEVO PEDIDO 🚨\n\n"
-                f"Cliente: {usuarios[numero]['nombre']}\n"
-                f"Número: {numero}\n\n"
-                f"{resumen}"
-            )
+                # 📤 ENVIAR A ADMIN
+                enviar_mensaje(ADMIN_NUMBER,
+                    f"📦 Nuevo pedido\n\n"
+                    f"Cliente: {nombre}\n"
+                    f"Producto: {prod['nombre']}\n"
+                    f"Cantidad: {cantidad}\n"
+                    f"Total: ${total}\n"
+                    f"Ubicación: https://maps.google.com/?q={lat},{lon}"
+                )
 
-            usuarios[numero]["paso"] = "inicio"
+                enviar_mensaje(numero, "✅ Pedido confirmado")
 
-    except Exception as e:
-        print("Error:", e)
+                usuarios[numero]["estado"] = "final"
 
-    return "ok", 200
+        except Exception as e:
+            print("Error:", e)
+
+        return "ok", 200
 
 
-@app.route('/')
-def home():
-    return "Bot activo"
+# 🚀 RUN
+if _name_ == '_main_':
+    app.run(host="0.0.0.0", port=10000)
