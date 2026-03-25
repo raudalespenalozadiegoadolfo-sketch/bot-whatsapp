@@ -3,17 +3,16 @@ import requests
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
-app = Flask(__name__)
+app = Flask(_name_)
 
 # 🔐 CONFIG
 ACCESS_TOKEN = "EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn"
 PHONE_NUMBER_ID = "1059311390588707"
 VERIFY_TOKEN = "my_token_secreto"
-ADMIN_NUMBER = "523171234529"  # TU NÚMERO (523171234529)
+ADMIN_NUMBER = "521XXXXXXXXXX"  # TU NÚMERO
 
 # 🧠 MEMORIA
 usuarios = {}
-ultimo_pedido = {}
 
 # 🍤 MENÚ
 menu = {
@@ -40,20 +39,9 @@ def enviar_mensaje(numero, texto):
     requests.post(url, headers=headers, json=data)
 
 
-# 📍 ENVIAR UBICACIÓN
+# 📍 PEDIR UBICACIÓN
 def enviar_ubicacion(numero):
-    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "text",
-        "text": {"body": "📍 Envíanos tu ubicación"}
-    }
-    requests.post(url, headers=headers, json=data)
+    enviar_mensaje(numero, "📍 Envíanos tu ubicación desde WhatsApp")
 
 
 # 📄 GENERAR PDF
@@ -75,27 +63,32 @@ def generar_pdf(nombre, numero, producto, cantidad, total):
     return archivo
 
 
-# 📤 ENVIAR DOCUMENTO
+# 📤 ENVIAR DOCUMENTO (CORREGIDO 🔥)
 def enviar_documento(numero, archivo):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {ACCESS_TOKEN}"
     }
 
-    files = {
-        "file": (archivo, open(archivo, "rb"), "application/pdf")
-    }
+    try:
+        with open(archivo, "rb") as f:
+            files = {
+                "file": (archivo, f, "application/pdf")
+            }
 
-    data = {
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "document"
-    }
+            data = {
+                "messaging_product": "whatsapp",
+                "to": numero,
+                "type": "document"
+            }
 
-    requests.post(url, headers=headers, files=files, data=data)
+            requests.post(url, headers=headers, files=files, data=data)
+
+    except Exception as e:
+        print("Error enviando PDF:", e)
 
 
-# 🌐 WEBHOOK (TODO EN UNO)
+# 🌐 WEBHOOK (GET + POST UNIFICADO)
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
 
@@ -117,9 +110,9 @@ def webhook():
             mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
             numero = mensaje["from"]
 
-            # TEXTO
+            # 📌 TEXTO
             if "text" in mensaje:
-                texto = mensaje["text"]["body"]
+                texto = mensaje["text"]["body"].strip()
 
                 # NUEVO USUARIO
                 if numero not in usuarios:
@@ -148,14 +141,18 @@ def webhook():
                         usuarios[numero]["estado"] = "cantidad"
                         enviar_mensaje(numero, "¿Cuántos?")
                     else:
-                        enviar_mensaje(numero, "Opción inválida")
+                        enviar_mensaje(numero, "❌ Opción inválida")
                     return "ok", 200
 
-                # CANTIDAD
+                # CANTIDAD (CORREGIDO 🔥)
                 if estado == "cantidad":
-                    cantidad = int(texto)
-                    prod = menu[usuarios[numero]["producto"]]
+                    try:
+                        cantidad = int(texto)
+                    except:
+                        enviar_mensaje(numero, "❌ Escribe solo números")
+                        return "ok", 200
 
+                    prod = menu[usuarios[numero]["producto"]]
                     total = cantidad * prod["precio"]
 
                     usuarios[numero]["cantidad"] = cantidad
@@ -165,13 +162,10 @@ def webhook():
                     enviar_ubicacion(numero)
                     return "ok", 200
 
-            # UBICACIÓN
+            # 📍 UBICACIÓN
             if "location" in mensaje:
                 lat = mensaje["location"]["latitude"]
                 lon = mensaje["location"]["longitude"]
-
-                usuarios[numero]["lat"] = lat
-                usuarios[numero]["lon"] = lon
 
                 nombre = usuarios[numero]["nombre"]
                 prod = menu[usuarios[numero]["producto"]]
@@ -182,7 +176,7 @@ def webhook():
 
                 enviar_documento(numero, archivo)
 
-                # 📤 ENVIAR A ADMIN
+                # 📤 ENVÍO A TI (ADMIN)
                 enviar_mensaje(ADMIN_NUMBER,
                     f"📦 Nuevo pedido\n\n"
                     f"Cliente: {nombre}\n"
@@ -197,11 +191,11 @@ def webhook():
                 usuarios[numero]["estado"] = "final"
 
         except Exception as e:
-            print("Error:", e)
+            print("Error general:", e)
 
         return "ok", 200
 
 
 # 🚀 RUN
-if _name_ == '_main_':
+if _name_ == "_main_":
     app.run(host="0.0.0.0", port=10000)
