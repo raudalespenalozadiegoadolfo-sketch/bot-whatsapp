@@ -40,7 +40,7 @@ def enviar_mensaje(numero, mensaje):
 
 # 🔍 VERIFICACIÓN WEBHOOK
 @app.route('/webhook', methods=['GET'])
-def verify():
+
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
 
