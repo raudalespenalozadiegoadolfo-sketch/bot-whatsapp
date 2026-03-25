@@ -9,8 +9,7 @@ app = Flask(__name__)
 ACCESS_TOKEN = "EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn"
 PHONE_NUMBER_ID = "1059311390588707"
 VERIFY_TOKEN = "my_token_secreto"
-ADMIN_NUMBER = "521XXXXXXXXXX"  # TU NÚMERO
-
+ADMIN_NUMBER = "521XXXXXXXXXX"  #523171234529
 # 🧠 MEMORIA
 usuarios = {}
 
@@ -197,5 +196,5 @@ def webhook():
 
 
 # 🚀 RUN
-if _name_ == "_main_":
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
