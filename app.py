@@ -6,6 +6,12 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
 
+# 🔑 CONFIG
+ACCESS_TOKEN = "EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn"
+PHONE_NUMBER_ID = "1059311390588707"
+VERIFY_TOKEN = "my_token_secreto"
+ADMIN_NUMBER = "523171234529"
+
 @app.route('/webhook', methods=['GET'])
 def verify():
     token = request.args.get("hub.verify_token")
@@ -15,12 +21,12 @@ def verify():
         return challenge
     else:
         return "Error", 403
-        
-# 🔑 CONFIG
-ACCESS_TOKEN = "EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn"
-PHONE_NUMBER_ID = "1059311390588707"
-VERIFY_TOKEN = "my_token_secreto"
-ADMIN_NUMBER = "523171234529"
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.json
+    print(data)
+    return "ok", 200
 
 usuarios = {}
 ultimo_pedido = {}
