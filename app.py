@@ -6,8 +6,8 @@ app = Flask(__name__)
 
 # Configuración desde variables de entorno (Render)
 TOKEN_VERIFICACION = os.environ.get("TOKEN_VERIFICACION", "my_token_secreto")
-ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
-PHONE_ID = os.environ.get("PHONE_ID")
+ACCESS_TOKEN = os.environ.get("EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn")
+PHONE_ID = os.environ.get("1059311390588707")
 
 @app.route('/')
 def home():
