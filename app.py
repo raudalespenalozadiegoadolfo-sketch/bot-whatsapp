@@ -4,76 +4,61 @@ import requests
 
 app = Flask(__name__)
 
-# Configuración desde variables de entorno (Render)
-TOKEN_VERIFICACION = os.environ.get("TOKEN_VERIFICACION", "my_token_secreto")
-ACCESS_TOKEN = os.environ.get("EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn")
-PHONE_ID = os.environ.get("1059311390588707")
-
-@app.route('/')
-def home():
-    return "Servidor del Bot de WhatsApp Activo", 200
+# Configuración desde variables de entorno en Render
+VERIFY_TOKEN = os.environ.get('my_token_secreto')
+ACCESS_TOKEN = os.environ.get('EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn')
+PHONE_NUMBER_ID = os.environ.get('1059311390588707')
 
 @app.route('/webhook', methods=['GET'])
-def verificar_webhook():
-    # Meta envía estos parámetros para validar tu servidor
+def verify_webhook():
+    mode = request.args.get('hub.mode')
     token = request.args.get('hub.verify_token')
     challenge = request.args.get('hub.challenge')
-    
-    # Comparamos el token que envía Meta con el que tú configuraste
-    if token == TOKEN_VERIFICACION:
-        return str(challenge), 200
-    
-    # Siempre retornamos algo para evitar el error 'did not return a valid response'
-    return "Token de verificación incorrecto", 403
+
+    if mode and token:
+        if mode == 'subscribe' and token == VERIFY_TOKEN:
+            return challenge, 200
+        else:
+            return jsonify({'status': 'error', 'message': 'Token mismatch'}), 403
+    return jsonify({'status': 'error', 'message': 'Missing params'}), 400
 
 @app.route('/webhook', methods=['POST'])
-def recibir_mensaje():
-    try:
-        data = request.get_json()
-        
-        # Log para ver en Render qué nos está enviando Meta exactamente
-        print(f"Evento recibido: {data}")
+def handle_message():
+    data = request.get_json()
+    print('Evento recibido:', data)
 
-        # Estructura de WhatsApp para extraer el mensaje
-        if 'entry' in data:
-            for entry in data['entry']:
-                for change in entry.get('changes', []):
-                    value = change.get('value', {})
-                    if 'messages' in value:
-                        for message in value['messages']:
-                            numero = message['from']
-                            texto_usuario = message.get('text', {}).get('body', '')
-                            
-                            if texto_usuario:
-                                print(f"Enviando respuesta a {numero}...")
-                                enviar_mensaje(numero, f"¡Hola! Recibí tu mensaje: {texto_usuario}")
+    if data and 'object' in data and 'entry' in data:
+        for entry in data['entry']:
+            for change in entry['changes']:
+                if 'value' in change and 'messages' in change['value']:
+                    for message in change['value']['messages']:
+                        if message['type'] == 'text':
+                            from_number = message['from']
+                            print(f"Enviando respuesta a {from_number}...")
+                            send_whatsapp_message(from_number, "Hola")
 
-        # Meta requiere que respondamos con un 200 OK para confirmar recepción
-        return "EVENT_RECEIVED", 200
-        
-    except Exception as e:
-        print(f"Error procesando mensaje: {e}")
-        return "Error interno", 500
+    return jsonify({'status': 'ok'}), 200
 
-def enviar_mensaje(numero, texto):
-    # Usamos la versión v21.0 de la API (la más reciente en 2026)
-    url = f"https://graph.facebook.com/{PHONE_ID}/messages"
+def send_whatsapp_message(to_number, text_message):
     headers = {
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
-        "Content-Type": "application/json"
+        'Authorization': f'Bearer {ACCESS_TOKEN}',
+        'Content-Type': 'application/json'
     }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "text",
-        "text": {"body": texto}
+    data = {
+        'messaging_product': 'whatsapp',
+        'to': to_number,
+        'type': 'text',
+        'text': {'body': text_message}
     }
     
-    response = requests.post(url, json=payload, headers=headers)
-    print(f"Respuesta de Meta API: {response.status_code} - {response.text}")
-    return response.json()
+    # URL CORREGIDA: Asegúrate de que tenga las "/" después de .com y v18.0
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+    
+    try:
+        response = requests.post(url, headers=headers, json=data )
+        print('Respuesta de WhatsApp API:', response.json())
+    except Exception as e:
+        print(f"Error enviando mensaje: {e}")
 
 if __name__ == '__main__':
-    # Render asigna el puerto automáticamente
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=10000)
