@@ -57,7 +57,7 @@ def recibir_mensaje():
 
 def enviar_mensaje(numero, texto):
     # Usamos la versión v21.0 de la API (la más reciente en 2026)
-    url = f"https://graph.facebook.com{PHONE_ID}/messages"
+    url = f"https://graph.facebook.com/{PHONE_ID}/messages"
     headers = {
         "Authorization": f"Bearer {ACCESS_TOKEN}",
         "Content-Type": "application/json"
