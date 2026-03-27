@@ -5,7 +5,7 @@ import requests
 app = Flask(__name__)
 
 # Configuración desde variables de entorno (Render)
-TOKEN_VERIFICACION = os.environ.get("TOKEN_VERIFICACION", "my_token_secreto_123")
+TOKEN_VERIFICACION = os.environ.get("TOKEN_VERIFICACION", "my_token_secreto")
 ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
 PHONE_ID = os.environ.get("PHONE_ID")
 
