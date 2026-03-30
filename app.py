@@ -51,8 +51,8 @@ def send_whatsapp_message(to_number, text_message):
         'text': {'body': text_message}
     }
     
-    # URL CORREGIDA: Asegúrate de que tenga las "/" después de .com y v18.0
-    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+    # URL CORREGIDA: Asegúrate de que tenga las "/" después de .com y v22.0
+    url = f"https://graph.facebook.com/v22.0/{PHONE_NUMBER_ID}/messages"
     
     try:
         response = requests.post(url, headers=headers, json=data )
