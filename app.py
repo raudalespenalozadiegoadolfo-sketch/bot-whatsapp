@@ -4,10 +4,11 @@ import requests
 
 app = Flask(__name__)
 
-# Configuración desde variables de entorno en Render
-VERIFY_TOKEN = os.environ.get('my_token_secreto')
-ACCESS_TOKEN = os.environ.get(¨EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn¨)
-PHONE_NUMBER_ID = os.environ.get('1059311390588707')
+# CONFIGURACIÓN CORRECTA:
+# Aquí se pone el NOMBRE de la variable que creaste en el Dashboard de Render.
+VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
+ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
 
 @app.route('/webhook', methods=['GET'])
 def verify_webhook():
@@ -17,6 +18,7 @@ def verify_webhook():
 
     if mode and token:
         if mode == 'subscribe' and token == VERIFY_TOKEN:
+            # Es importante devolver el challenge como texto plano, no JSON
             return challenge, 200
         else:
             return jsonify({'status': 'error', 'message': 'Token mismatch'}), 403
@@ -27,15 +29,25 @@ def handle_message():
     data = request.get_json()
     print('Evento recibido:', data)
 
+    # Validamos la estructura del webhook de Meta
     if data and 'object' in data and 'entry' in data:
         for entry in data['entry']:
+            # A veces los webhooks envían cambios de estado de mensajes, ignoramos si no hay 'changes'
+            if 'changes' not in entry:
+                continue
             for change in entry['changes']:
                 if 'value' in change and 'messages' in change['value']:
                     for message in change['value']['messages']:
-                        if message['type'] == 'text':
+                        # Procesar solo mensajes de texto
+                        if message.get('type') == 'text':
                             from_number = message['from']
                             print(f"Enviando respuesta a {from_number}...")
-                            send_whatsapp_message(from_number, "Hola")
+                            
+                            # Es buena práctica responder el texto que el usuario envió
+                            user_msg = message['text']['body']
+                            respuesta = f"Recibí tu mensaje: '{user_msg}'. ¡Hola!"
+                            
+                            send_whatsapp_message(from_number, respuesta)
 
     return jsonify({'status': 'ok'}), 200
 
@@ -46,19 +58,22 @@ def send_whatsapp_message(to_number, text_message):
     }
     data = {
         'messaging_product': 'whatsapp',
+        'recipient_type': 'individual',
         'to': to_number,
         'type': 'text',
         'text': {'body': text_message}
     }
     
-    # URL CORREGIDA: Asegúrate de que tenga las "/" después de .com y v22.0
+    # URL de la API de Graph
     url = f"https://graph.facebook.com/v22.0/{PHONE_NUMBER_ID}/messages"
     
     try:
-        response = requests.post(url, headers=headers, json=data )
+        response = requests.post(url, headers=headers, json=data)
         print('Respuesta de WhatsApp API:', response.json())
     except Exception as e:
         print(f"Error enviando mensaje: {e}")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    # Render asigna dinámicamente un puerto a través de la variable PORT
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
