@@ -6,9 +6,9 @@ app = Flask(__name__)
 
 # CONFIGURACIÓN CORRECTA:
 # Aquí se pone el NOMBRE de la variable que creaste en el Dashboard de Render.
-VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
-ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
-PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
+VERIFY_TOKEN = os.environ.get('my_token_secreto')
+ACCESS_TOKEN = os.environ.get('EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn')
+PHONE_NUMBER_ID = os.environ.get('1059311390588707')
 
 @app.route('/webhook', methods=['GET'])
 def verify_webhook():
