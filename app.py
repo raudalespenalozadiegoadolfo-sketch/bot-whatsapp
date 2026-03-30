@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 # Configuración desde variables de entorno en Render
 VERIFY_TOKEN = os.environ.get('my_token_secreto')
-ACCESS_TOKEN = os.environ.get('EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn')
+ACCESS_TOKEN = os.environ.get(¨EAAXhxO2OiUsBRC63x4ZBzbfDQMbOniGxLTrgTcFp4xh3uS7nC5T1WD4hz0japFZA6FZCfpPRYAfcPR78VsaX2W5pYG2bPvaey9sMZAzChbqjZAZBZANKVWxUOdZCs7VmnQJc1n2yxLWltLIrhifKT3wafxrZB6AxVf3ObHqZBZCEmB8tsBrQ9Fau9jUzUOhXvKn¨)
 PHONE_NUMBER_ID = os.environ.get('1059311390588707')
 
 @app.route('/webhook', methods=['GET'])
