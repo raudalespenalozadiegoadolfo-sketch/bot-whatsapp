@@ -5,23 +5,23 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
-# 1. CONFIGURACIÓN DE VARIABLES (Extraídas de Render > Ambiente)
-VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
-ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+# 1. CONFIGURACIÓN DE VARIABLES (Extraídas de Render > Environment)
+MY_VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
+WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
 PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
-GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
+GEMINI_APY_KEY = os.environ.get('GEMINI_API_KEY')
 
 # 2. CONFIGURACIÓN DE GEMINI IA
 genai.configure(api_key=GEMINI_KEY)
 
-# Instrucciones detalladas de comportamiento y menú
+# Instrucciones detalladas de comportamiento y menú solicitado
 instrucciones_ia = """
-Eres el asistente virtual de 'El Marisco Alegre' 🦐.
-Tu objetivo es ser muy amable, usar emojis de mariscos y comida (🐟, 🍋, 🍻) y gestionar pedidos de forma eficiente.
+Eres el asistente virtual de 'El Marisco Alegre' 🦐. 
+Tu objetivo es ser muy amable, usar emojis de mariscos y comida (🐟, 🍋, 🍻) y gestionar pedidos.
 
 HORARIO: Martes a Domingo de 10:00 AM a 6:00 PM ⏰. (Lunes cerrado).
 
-MENÚ DE COMIDA:
+MENU DE COMIDA:
 - Orden de Ceviche: $200 🍋
 - Orden de Aguachile: $250 🌶️
 - Docena de Ostiones: $400 🦪
@@ -36,13 +36,13 @@ MENU DE BEBIDAS:
 REGLAS DE ORO DEL PEDIDO:
 1. Si el cliente selecciona un platillo, PREGUNTA SIEMPRE: "¿Cuántas órdenes o unidades necesitas? 😊".
 2. Después de que responda la cantidad, PREGUNTA SIEMPRE: "¿Deseas añadir algo más a tu pedido? 🌊".
-3. Solo cuando el cliente diga que NO desea nada más, realiza la suma total.
-4. Si el pedido es para ENVÍO A DOMICILIO, suma obligatoriamente $25 MXN de costo de envío al total.
-5. Muestra el desglose final y el TOTAL A PAGAR 💰 de forma muy clara.
-6. Mantén siempre una actitud alegre y servicial.
+3. Solo cuando el cliente diga que NO desea nada más, realiza la suma total de los productos.
+4. IMPORTANTE: Si el pedido es para ENVÍO A DOMICILIO, suma obligatoriamente $25 MXN de costo de envío al total final.
+5. Muestra el desglose de la cuenta y el TOTAL A PAGAR 💰 de forma clara.
+6. Sé siempre alegre, servicial y usa emojis en cada respuesta.
 """
 
-# IMPORTANTE: Se usa 'model_name='gemini-1.5-flash', para evitar el error 404
+# Usamos el nombre del modelo sin prefijos para evitar errores de versión
 model = genai.GenerativeModel(
     model_name='gemini-1.5-flash',
     system_instruction=instrucciones_ia
@@ -77,8 +77,9 @@ def handle_message():
                                 chat_response = model.generate_content(user_text)
                                 respuesta_final = chat_response.text
 
-                                # Enviar a WhatsApp
+                                # Enviar respuesta a WhatsApp
                                 send_whatsapp_message(from_number, respuesta_final)
+                                
         return jsonify({'status': 'ok'}), 200
     except Exception as e:
         print(f"Error detectado: {e}")
