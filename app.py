@@ -19,7 +19,7 @@ GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 genai.configure(api_key=GEMINI_KEY)
 
 # 👇 VERIFICACIÓN DE VERSIÓN (IMPORTANTE)
-print("VERSION GEMINI:", genai._version_)
+print("VERSION GEMINI:", genai.__version__)
 
 instrucciones_ia = """
 Eres el asistente virtual de 'El Marisco Alegre' 🦐.
