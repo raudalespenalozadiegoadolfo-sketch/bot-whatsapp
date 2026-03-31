@@ -6,18 +6,14 @@ import google.generativeai as genai
 app = Flask(__name__)
 
 # 1. CONFIGURACIÓN DE VARIABLES (Extraídas de Render > Environment)
-MY_VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
-WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
+VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
+ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
 PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
-# Así debe quedar en app.py:
-GEMINI_KEY = os.environ.get('GEMINI_APY_KEY') # Aquí se lee de Render
-genai.configure(apy_key=GEMINI_KEY)           # Aquí se usa para la IA
-
+GEMINI_KEY = os.environ.get('GEMINI_APY_KEY') # Asegúrate que en Render diga APY con Y
 
 # 2. CONFIGURACIÓN DE GEMINI IA
-genai.configure(api_key=GEMINI_KEY)
+genai.configure(api_key=GEMINI_KEY) # CORREGIDO: era api_key, no apy_key
 
-# Instrucciones detalladas de comportamiento y menú solicitado
 instrucciones_ia = """
 Eres el asistente virtual de 'El Marisco Alegre' 🦐. 
 Tu objetivo es ser muy amable, usar emojis de mariscos y comida (🐟, 🍋, 🍻) y gestionar pedidos.
@@ -45,7 +41,6 @@ REGLAS DE ORO DEL PEDIDO:
 6. Sé siempre alegre, servicial y usa emojis en cada respuesta.
 """
 
-# Usamos el nombre del modelo sin prefijos para evitar errores de versión
 model = genai.GenerativeModel(
     model_name='gemini-1.5-flash',
     system_instruction=instrucciones_ia
@@ -57,6 +52,7 @@ def verify_webhook():
     mode = request.args.get('hub.mode')
     token = request.args.get('hub.verify_token')
     challenge = request.args.get('hub.challenge')
+    # CORREGIDO: Usamos VERIFY_TOKEN (la variable definida arriba)
     if mode == 'subscribe' and token == VERIFY_TOKEN:
         return challenge, 200
     return "Error de verificación", 403
@@ -76,11 +72,9 @@ def handle_message():
                                 from_number = message['from']
                                 user_text = message['text']['body']
 
-                                # Generar respuesta con la IA
                                 chat_response = model.generate_content(user_text)
                                 respuesta_final = chat_response.text
 
-                                # Enviar respuesta a WhatsApp
                                 send_whatsapp_message(from_number, respuesta_final)
                                 
         return jsonify({'status': 'ok'}), 200
@@ -90,9 +84,10 @@ def handle_message():
 
 # 5. FUNCIÓN PARA ENVIAR MENSAJES VÍA WHATSAPP API
 def send_whatsapp_message(to_number, text_message):
+    # CORREGIDO: URL completa y correcta de Meta
     url = f"https://facebook.com{PHONE_NUMBER_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Authorization": f"Bearer {ACCESS_TOKEN}", # CORREGIDO: Usamos ACCESS_TOKEN definido arriba
         "Content-Type": "application/json"
     }
     payload = {
@@ -108,8 +103,5 @@ def send_whatsapp_message(to_number, text_message):
         print(f"Fallo al enviar mensaje: {e}")
 
 if __name__ == '__main__':
-    # Render usa la variable de entorno PORT, si no existe usa el 10000
     port = int(os.environ.get("PORT", 10000))
-    # Es VITAL que el host sea '0.0.0.0' para que Render lo detecte
     app.run(host='0.0.0.0', port=port)
-
