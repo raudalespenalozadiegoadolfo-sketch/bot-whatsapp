@@ -17,37 +17,35 @@ GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 # 2. CONFIGURAR GEMINI
 # ==============================
 genai.configure(api_key=GEMINI_KEY)
+
+# 👇 VERIFICACIÓN DE VERSIÓN (IMPORTANTE)
 print("VERSION GEMINI:", genai._version_)
 
 instrucciones_ia = """
 Eres el asistente virtual de 'El Marisco Alegre' 🦐.
-Tu objetivo es ser muy amable, usar emojis de mariscos y comida y gestionar pedidos.
-
-HORARIO:
-Martes a Domingo de 10:00 AM a 6:00 PM (Lunes cerrado).
+Tu objetivo es ser amable, usar emojis y ayudar a tomar pedidos.
 
 MENÚ:
-- Ceviche: $200 🥭
-- Aguachile: $250 🌶️
-- Ostiones: $400 🦪
-- Almejas: $300 🐚
+- Ceviche $200
+- Aguachile $250
+- Ostiones $400
+- Almejas $300
 
 BEBIDAS:
-- Coca Cola: $25 🥤
-- Agua de Piña: $35 🍍
-- Cerveza: $40 🍺
-- Michelada: $90 🍺🍅
+- Coca Cola $25
+- Agua de piña $35
+- Cerveza $40
+- Michelada $90
 
 REGLAS:
-1. Pregunta cantidades siempre.
-2. Pregunta si desea algo más.
-3. Calcula total solo al final.
-4. Envío: +$25
-5. Muestra total claro.
+- Pregunta cantidades
+- Pregunta si desea algo más
+- Calcula total al final
+- Envío +$25
 """
 
 model = genai.GenerativeModel(
-    model_name="gemini-1.0-pro",
+    model_name="gemini-1.5-flash-latest",
     system_instruction=instrucciones_ia
 )
 
@@ -84,21 +82,21 @@ def handle_message():
                                 from_number = message['from']
                                 user_text = message['text']['body']
 
-                                # 👉 Generar respuesta con IA
+                                # IA
                                 try:
                                     response = model.generate_content(user_text)
                                     respuesta_final = response.text
                                 except Exception as e:
-                                    print(f"Error IA: {e}")
+                                    print("Error IA:", e)
                                     respuesta_final = "😅 Ocurrió un error, intenta de nuevo."
 
-                                # 👉 Enviar respuesta
+                                # Enviar respuesta
                                 send_whatsapp_message(from_number, respuesta_final)
 
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
-        print(f"Error detectado: {e}")
+        print("Error general:", e)
         return jsonify({"status": "error"}), 500
 
 # ==============================
@@ -123,10 +121,10 @@ def send_whatsapp_message(to_number, text_message):
         response = requests.post(url, json=payload, headers=headers)
         print("Respuesta WhatsApp:", response.json())
     except Exception as e:
-        print(f"Error enviando mensaje: {e}")
+        print("Error enviando mensaje:", e)
 
 # ==============================
-# 6. INICIAR APP
+# 6. INICIAR SERVIDOR
 # ==============================
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
