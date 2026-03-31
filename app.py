@@ -5,18 +5,19 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
-# 1. CARGA DE VARIABLES DESDE RENDER (Environment Variables)
+# 1. CONFIGURACIÓN DE VARIABLES (Extraídas de Render > Ambiente)
 VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
 ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
 PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 
-# 2. CONFIGURACIÓN DE LA IA (GEMINI)
+# 2. CONFIGURACIÓN DE GEMINI IA
 genai.configure(api_key=GEMINI_KEY)
 
+# Instrucciones detalladas de comportamiento y menú
 instrucciones_ia = """
 Eres el asistente virtual de 'El Marisco Alegre' 🦐.
-Tu objetivo es ser muy amable, usar emojis de mariscos y comida (🐟, 🍋, 🍻) y gestionar pedidos.
+Tu objetivo es ser muy amable, usar emojis de mariscos y comida (🐟, 🍋, 🍻) y gestionar pedidos de forma eficiente.
 
 HORARIO: Martes a Domingo de 10:00 AM a 6:00 PM ⏰. (Lunes cerrado).
 
@@ -32,17 +33,18 @@ MENU DE BEBIDAS:
 - Cerveza 355 ml: $40 🍺
 - Michelada Clamato: $90 🍅🍻
 
-REGLAS DE ATENCIÓN:
-1. Siempre pregunta cuántas órdenes o unidades necesita de cada platillo que el cliente mencione.
-2. Después de que el cliente elija algo, pregunta SIEMPRE: "¿Deseas añadir algo más a tu pedido? 😊".
-3. Si el cliente dice que NO desea nada más, realiza la suma total de los productos.
-4. Si el pedido es para ENVÍO A DOMICILIO, suma obligatoriamente $25 MXN por concepto de envío al total.
-5. Muestra el desglose de la cuenta de forma clara y el TOTAL A PAGAR 💰.
-6. Sé siempre alegre y servicial.
+REGLAS DE ORO DEL PEDIDO:
+1. Si el cliente selecciona un platillo, PREGUNTA SIEMPRE: "¿Cuántas órdenes o unidades necesitas? 😊".
+2. Después de que responda la cantidad, PREGUNTA SIEMPRE: "¿Deseas añadir algo más a tu pedido? 🌊".
+3. Solo cuando el cliente diga que NO desea nada más, realiza la suma total.
+4. Si el pedido es para ENVÍO A DOMICILIO, suma obligatoriamente $25 MXN de costo de envío al total.
+5. Muestra el desglose final y el TOTAL A PAGAR 💰 de forma muy clara.
+6. Mantén siempre una actitud alegre y servicial.
 """
 
+# IMPORTANTE: Se usa 'models/gemini-1.5-flash' para evitar el error 404
 model = genai.GenerativeModel(
-    model_name='gemini-1.5-flash',
+    model_name='models/gemini-1.5-flash',
     system_instruction=instrucciones_ia
 )
 
@@ -54,9 +56,9 @@ def verify_webhook():
     challenge = request.args.get('hub.challenge')
     if mode == 'subscribe' and token == VERIFY_TOKEN:
         return challenge, 200
-    return "Error de token", 403
+    return "Error de verificación", 403
 
-# 4. RECEPCIÓN DE MENSAJES (POST)
+# 4. RECEPCIÓN Y PROCESAMIENTO DE MENSAJES (POST)
 @app.route('/webhook', methods=['POST'])
 def handle_message():
     data = request.get_json()
@@ -71,17 +73,18 @@ def handle_message():
                                 from_number = message['from']
                                 user_text = message['text']['body']
 
-                                # La IA genera la respuesta basada en el historial (contexto)
+                                # Generar respuesta con la IA
                                 chat_response = model.generate_content(user_text)
                                 respuesta_final = chat_response.text
 
+                                # Enviar a WhatsApp
                                 send_whatsapp_message(from_number, respuesta_final)
         return jsonify({'status': 'ok'}), 200
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error detectado: {e}")
         return jsonify({'status': 'error'}), 500
 
-# 5. FUNCIÓN DE ENVÍO A WHATSAPP
+# 5. FUNCIÓN PARA ENVIAR MENSAJES VÍA WHATSAPP API
 def send_whatsapp_message(to_number, text_message):
     url = f"https://facebook.com{PHONE_NUMBER_ID}/messages"
     headers = {
@@ -95,11 +98,11 @@ def send_whatsapp_message(to_number, text_message):
         "text": {"body": text_message}
     }
     try:
-        requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers)
+        print(f"Respuesta Meta API: {response.json()}")
     except Exception as e:
-        print(f"Error al enviar: {e}")
+        print(f"Fallo al enviar mensaje: {e}")
 
 if __name__ == '__main__':
-    # Render usa el puerto 10000 por defecto
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
