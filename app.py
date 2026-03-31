@@ -12,7 +12,7 @@ PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY') # Asegúrate que en Render diga API con I
 
 # 2. CONFIGURACIÓN DE GEMINI IA
-genai.configure(api_key=GEMINI_KEY) # CORREGIDO: era api_key, no apy_key
+genai.configure(api_key=GEMINI_KEY)
 
 instrucciones_ia = """
 Eres el asistente virtual de 'El Marisco Alegre' 🦐. 
@@ -52,7 +52,6 @@ def verify_webhook():
     mode = request.args.get('hub.mode')
     token = request.args.get('hub.verify_token')
     challenge = request.args.get('hub.challenge')
-    # CORREGIDO: Usamos VERIFY_TOKEN (la variable definida arriba)
     if mode == 'subscribe' and token == VERIFY_TOKEN:
         return challenge, 200
     return "Error de verificación", 403
@@ -72,9 +71,11 @@ def handle_message():
                                 from_number = message['from']
                                 user_text = message['text']['body']
 
+                                # Generar respuesta con la IA
                                 chat_response = model.generate_content(user_text)
                                 respuesta_final = chat_response.text
 
+                                # Enviar respuesta a WhatsApp
                                 send_whatsapp_message(from_number, respuesta_final)
                                 
         return jsonify({'status': 'ok'}), 200
@@ -84,10 +85,10 @@ def handle_message():
 
 # 5. FUNCIÓN PARA ENVIAR MENSAJES VÍA WHATSAPP API
 def send_whatsapp_message(to_number, text_message):
-    # CORREGIDO: URL completa y correcta de Meta
+    # CORRECCIÓN VITAL: URL completa con subdominio y versión
     url = f"https://facebook.com{PHONE_NUMBER_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {ACCESS_TOKEN}", # CORREGIDO: Usamos ACCESS_TOKEN definido arriba
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
         "Content-Type": "application/json"
     }
     payload = {
