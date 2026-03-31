@@ -9,7 +9,7 @@ app = Flask(__name__)
 VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
 ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
 PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
-GEMINI_KEY = os.environ.get('GEMINI_APY_KEY') # Asegúrate que en Render diga APY con Y
+GEMINI_KEY = os.environ.get('GEMINI_API_KEY') # Asegúrate que en Render diga APY con Y
 
 # 2. CONFIGURACIÓN DE GEMINI IA
 genai.configure(api_key=GEMINI_KEY) # CORREGIDO: era api_key, no apy_key
