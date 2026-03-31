@@ -5,100 +5,74 @@ from google import genai
 
 app = Flask(__name__)
 
-# ==============================
+# =========================
 # VARIABLES DE ENTORNO
-# ==============================
-VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
-ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
-PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
-GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
+# =========================
+VERIFY_TOKEN = os.environ.get("MY_VERIFY_TOKEN")
+ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN")
+PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# ==============================
-# CONFIGURAR GEMINI (SDK NUEVO)
-# ==============================
-client = genai.Client(api_key=GEMINI_KEY)
+# =========================
+# CONFIGURAR GEMINI NUEVO
+# =========================
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==============================
-# INSTRUCCIONES DEL BOT
-# ==============================
-instrucciones_ia = """
-Eres el asistente virtual de 'El Marisco Alegre' 🦐.
-Sé amable, usa emojis y ayuda a tomar pedidos.
-
-MENÚ:
-- Ceviche $200 🥭
-- Aguachile $250 🌶️
-- Ostiones $400 🦪
-- Almejas $300 🐚
-
-BEBIDAS:
-- Coca Cola $25 🥤
-- Agua de piña $35 🍍
-- Cerveza $40 🍺
-- Michelada $90 🍺🍅
-
-REGLAS:
-- Pregunta cantidades
-- Pregunta si desea algo más
-- Calcula total al final
-- Envío +$25
-"""
-
-# ==============================
-# FUNCIÓN IA (NUEVA FORMA)
-# ==============================
-def generar_respuesta(texto_usuario):
-    try:
-        prompt = instrucciones_ia + "\nCliente: " + texto_usuario
-
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt
-        )
-
-        return response.text
-
-    except Exception as e:
-        print("Error IA:", e)
-        return "😅 Ocurrió un error, intenta de nuevo."
-
-# ==============================
+# =========================
 # VERIFICACIÓN WEBHOOK (GET)
-# ==============================
-@app.route('/webhook', methods=['GET'])
+# =========================
+@app.route("/webhook", methods=["GET"])
 def verify_webhook():
-    mode = request.args.get('hub.mode')
-    token = request.args.get('hub.verify_token')
-    challenge = request.args.get('hub.challenge')
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
 
-    if mode == 'subscribe' and token == VERIFY_TOKEN:
+    if mode == "subscribe" and token == VERIFY_TOKEN:
         return challenge, 200
-    return "Error de verificación", 403
+    else:
+        return "Error de verificación", 403
 
-# ==============================
+
+# =========================
 # RECIBIR MENSAJES (POST)
-# ==============================
-@app.route('/webhook', methods=['POST'])
-def handle_message():
+# =========================
+@app.route("/webhook", methods=["POST"])
+def receive_message():
+    data = request.get_json()
+
     try:
-        data = request.get_json()
+        if data.get("object") == "whatsapp_business_account":
+            for entry in data.get("entry", []):
+                for change in entry.get("changes", []):
+                    value = change.get("value", {})
 
-        if data.get('object') == 'whatsapp_business_account':
-            for entry in data['entry']:
-                for change in entry['changes']:
-                    value = change.get('value')
+                    if "messages" in value:
+                        for message in value["messages"]:
+                            if message.get("type") == "text":
 
-                    if value and 'messages' in value:
-                        for message in value['messages']:
+                                from_number = message["from"]
+                                user_text = message["text"]["body"]
 
-                            if message['type'] == 'text':
-                                from_number = message['from']
-                                user_text = message['text']['body']
+                                print("Mensaje recibido:", user_text)
 
-                                # 👉 RESPUESTA IA
-                                respuesta_final = generar_respuesta(user_text)
+                                # =========================
+                                # RESPUESTA CON GEMINI NUEVO
+                                # =========================
+                                try:
+                                    response = client.models.generate_content(
+                                        model="gemini-1.5-flash",
+                                        contents=user_text
+                                    )
 
-                                # 👉 ENVIAR A WHATSAPP
+                                    respuesta_final = response.text
+
+                                except Exception as e:
+                                    print("Error IA:", e)
+                                    respuesta_final = "😅 Ocurrió un error, intenta de nuevo."
+
+                                # =========================
+                                # ENVIAR RESPUESTA
+                                # =========================
                                 send_whatsapp_message(from_number, respuesta_final)
 
         return jsonify({"status": "ok"}), 200
@@ -107,11 +81,12 @@ def handle_message():
         print("Error general:", e)
         return jsonify({"status": "error"}), 500
 
-# ==============================
+
+# =========================
 # ENVIAR MENSAJE WHATSAPP
-# ==============================
-def send_whatsapp_message(to_number, text_message):
-    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+# =========================
+def send_whatsapp_message(to_number, text):
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
         "Authorization": f"Bearer {ACCESS_TOKEN}",
@@ -122,7 +97,7 @@ def send_whatsapp_message(to_number, text_message):
         "messaging_product": "whatsapp",
         "to": to_number,
         "type": "text",
-        "text": {"body": text_message}
+        "text": {"body": text}
     }
 
     try:
@@ -131,9 +106,10 @@ def send_whatsapp_message(to_number, text_message):
     except Exception as e:
         print("Error enviando mensaje:", e)
 
-# ==============================
-# INICIAR SERVIDOR
-# ==============================
-if __name__ == '__main__':
+
+# =========================
+# INICIO SERVIDOR
+# =========================
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
