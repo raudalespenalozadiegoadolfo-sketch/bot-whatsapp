@@ -10,8 +10,8 @@ MY_VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
 WHATSAPP_ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
 PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
 # Así debe quedar en app.py:
-GEMINI_KEY = os.environ.get('GEMINI_API_KEY') # Aquí se lee de Render
-genai.configure(api_key=GEMINI_KEY)           # Aquí se usa para la IA
+GEMINI_KEY = os.environ.get('GEMINI_APY_KEY') # Aquí se lee de Render
+genai.configure(apy_key=GEMINI_KEY)           # Aquí se usa para la IA
 
 
 # 2. CONFIGURACIÓN DE GEMINI IA
