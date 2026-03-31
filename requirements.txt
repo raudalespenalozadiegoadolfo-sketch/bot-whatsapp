@@ -1,5 +1,4 @@
 flask
 requests
-reportlab
 gunicorn
-google-generativeai
+google-generativeai>=0.7.2
