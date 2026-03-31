@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests
 import os
-import google.generativeai as genai
+from google import genai
 
 app = Flask(__name__)
 
@@ -14,16 +14,13 @@ PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 
 # ==============================
-# 2. CONFIGURAR GEMINI
+# 2. CONFIGURAR GEMINI (SDK NUEVO)
 # ==============================
-genai.configure(api_key=GEMINI_KEY)
-
-# 👇 VERIFICACIÓN DE VERSIÓN (IMPORTANTE)
-print("VERSION GEMINI:", genai.__version__)
+client = genai.Client(api_key=GEMINI_KEY)
 
 instrucciones_ia = """
 Eres el asistente virtual de 'El Marisco Alegre' 🦐.
-Tu objetivo es ser amable, usar emojis y ayudar a tomar pedidos.
+Sé amable, usa emojis y ayuda a tomar pedidos.
 
 MENÚ:
 - Ceviche $200
@@ -44,13 +41,26 @@ REGLAS:
 - Envío +$25
 """
 
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash-002",
-    system_instruction=instrucciones_ia
-)
+# ==============================
+# 3. FUNCIÓN IA
+# ==============================
+def generar_respuesta(texto_usuario):
+    try:
+        prompt = instrucciones_ia + "\nCliente: " + texto_usuario
+
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
+        )
+
+        return response.text
+
+    except Exception as e:
+        print("Error IA:", e)
+        return "😅 Ocurrió un error, intenta de nuevo."
 
 # ==============================
-# 3. VERIFICACIÓN WEBHOOK
+# 4. VERIFICACIÓN WEBHOOK (GET)
 # ==============================
 @app.route('/webhook', methods=['GET'])
 def verify_webhook():
@@ -63,7 +73,7 @@ def verify_webhook():
     return "Error de verificación", 403
 
 # ==============================
-# 4. RECIBIR MENSAJES
+# 5. RECIBIR MENSAJES (POST)
 # ==============================
 @app.route('/webhook', methods=['POST'])
 def handle_message():
@@ -82,15 +92,10 @@ def handle_message():
                                 from_number = message['from']
                                 user_text = message['text']['body']
 
-                                # IA
-                                try:
-                                    response = model.generate_content(user_text)
-                                    respuesta_final = response.text
-                                except Exception as e:
-                                    print("Error IA:", e)
-                                    respuesta_final = "😅 Ocurrió un error, intenta de nuevo."
+                                # 🔥 RESPUESTA IA (NUEVA FORMA)
+                                respuesta_final = generar_respuesta(user_text)
 
-                                # Enviar respuesta
+                                # 📲 ENVIAR RESPUESTA
                                 send_whatsapp_message(from_number, respuesta_final)
 
         return jsonify({"status": "ok"}), 200
@@ -100,7 +105,7 @@ def handle_message():
         return jsonify({"status": "error"}), 500
 
 # ==============================
-# 5. ENVIAR MENSAJE WHATSAPP
+# 6. ENVIAR MENSAJE WHATSAPP
 # ==============================
 def send_whatsapp_message(to_number, text_message):
     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
@@ -124,8 +129,8 @@ def send_whatsapp_message(to_number, text_message):
         print("Error enviando mensaje:", e)
 
 # ==============================
-# 6. INICIAR SERVIDOR
+# 7. INICIAR SERVIDOR
 # ==============================
-if __name__ == '__main__':
+if __name__== '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
