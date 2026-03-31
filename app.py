@@ -6,7 +6,7 @@ from google import genai
 app = Flask(__name__)
 
 # ==============================
-# 1. VARIABLES DE ENTORNO
+# VARIABLES DE ENTORNO
 # ==============================
 VERIFY_TOKEN = os.environ.get('MY_VERIFY_TOKEN')
 ACCESS_TOKEN = os.environ.get('WHATSAPP_ACCESS_TOKEN')
@@ -14,25 +14,28 @@ PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 
 # ==============================
-# 2. CONFIGURAR GEMINI (SDK NUEVO)
+# CONFIGURAR GEMINI (SDK NUEVO)
 # ==============================
 client = genai.Client(api_key=GEMINI_KEY)
 
+# ==============================
+# INSTRUCCIONES DEL BOT
+# ==============================
 instrucciones_ia = """
 Eres el asistente virtual de 'El Marisco Alegre' 🦐.
 Sé amable, usa emojis y ayuda a tomar pedidos.
 
 MENÚ:
-- Ceviche $200
-- Aguachile $250
-- Ostiones $400
-- Almejas $300
+- Ceviche $200 🥭
+- Aguachile $250 🌶️
+- Ostiones $400 🦪
+- Almejas $300 🐚
 
 BEBIDAS:
-- Coca Cola $25
-- Agua de piña $35
-- Cerveza $40
-- Michelada $90
+- Coca Cola $25 🥤
+- Agua de piña $35 🍍
+- Cerveza $40 🍺
+- Michelada $90 🍺🍅
 
 REGLAS:
 - Pregunta cantidades
@@ -42,7 +45,7 @@ REGLAS:
 """
 
 # ==============================
-# 3. FUNCIÓN IA
+# FUNCIÓN IA (NUEVA FORMA)
 # ==============================
 def generar_respuesta(texto_usuario):
     try:
@@ -60,7 +63,7 @@ def generar_respuesta(texto_usuario):
         return "😅 Ocurrió un error, intenta de nuevo."
 
 # ==============================
-# 4. VERIFICACIÓN WEBHOOK (GET)
+# VERIFICACIÓN WEBHOOK (GET)
 # ==============================
 @app.route('/webhook', methods=['GET'])
 def verify_webhook():
@@ -73,7 +76,7 @@ def verify_webhook():
     return "Error de verificación", 403
 
 # ==============================
-# 5. RECIBIR MENSAJES (POST)
+# RECIBIR MENSAJES (POST)
 # ==============================
 @app.route('/webhook', methods=['POST'])
 def handle_message():
@@ -92,10 +95,10 @@ def handle_message():
                                 from_number = message['from']
                                 user_text = message['text']['body']
 
-                                # 🔥 RESPUESTA IA (NUEVA FORMA)
+                                # 👉 RESPUESTA IA
                                 respuesta_final = generar_respuesta(user_text)
 
-                                # 📲 ENVIAR RESPUESTA
+                                # 👉 ENVIAR A WHATSAPP
                                 send_whatsapp_message(from_number, respuesta_final)
 
         return jsonify({"status": "ok"}), 200
@@ -105,7 +108,7 @@ def handle_message():
         return jsonify({"status": "error"}), 500
 
 # ==============================
-# 6. ENVIAR MENSAJE WHATSAPP
+# ENVIAR MENSAJE WHATSAPP
 # ==============================
 def send_whatsapp_message(to_number, text_message):
     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
@@ -129,8 +132,8 @@ def send_whatsapp_message(to_number, text_message):
         print("Error enviando mensaje:", e)
 
 # ==============================
-# 7. INICIAR SERVIDOR
+# INICIAR SERVIDOR
 # ==============================
-if __name__== '__main__':
+if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
