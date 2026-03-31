@@ -42,7 +42,7 @@ REGLAS DE ORO DEL PEDIDO:
 """
 
 model = genai.GenerativeModel(
-    model_name='gemini-1.5-flash',
+    model_name='gemini-1.5-flash-latest'
     system_instruction=instrucciones_ia
 )
 
