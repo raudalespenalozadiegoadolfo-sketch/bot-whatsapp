@@ -42,7 +42,7 @@ REGLAS DE ORO DEL PEDIDO:
 6. Mantén siempre una actitud alegre y servicial.
 """
 
-# IMPORTANTE: Se usa 'models/gemini-1.5-flash' para evitar el error 404
+# IMPORTANTE: Se usa 'model_name='gemini-1.5-flash', para evitar el error 404
 model = genai.GenerativeModel(
     model_name='gemini-1.5-flash',
     system_instruction=instrucciones_ia
