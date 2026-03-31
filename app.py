@@ -105,5 +105,8 @@ def send_whatsapp_message(to_number, text_message):
         print(f"Fallo al enviar mensaje: {e}")
 
 if __name__ == '__main__':
+    # Render usa la variable de entorno PORT, si no existe usa el 10000
     port = int(os.environ.get("PORT", 10000))
+    # Es VITAL que el host sea '0.0.0.0' para que Render lo detecte
     app.run(host='0.0.0.0', port=port)
+
