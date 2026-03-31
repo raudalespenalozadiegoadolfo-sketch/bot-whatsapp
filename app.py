@@ -44,7 +44,7 @@ REGLAS DE ORO DEL PEDIDO:
 
 # IMPORTANTE: Se usa 'models/gemini-1.5-flash' para evitar el error 404
 model = genai.GenerativeModel(
-    model_name='models/gemini-1.5-flash',
+    model_name='gemini-1.5-flash',
     system_instruction=instrucciones_ia
 )
 
