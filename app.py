@@ -1,24 +1,32 @@
 from flask import Flask, request
 import requests
 import os
-import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from openai import OpenAI
 
 app = Flask(__name__)
 
 # =========================
-# VARIABLES
+# CONFIG
 # =========================
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# =========================
+# MEMORIA (SESIONES)
+# =========================
+sesiones = {}
 
 # =========================
 # MENÚ
 # =========================
 MENU = {
-    "almeja": 300,
-    "ostion": 400,
+    "almejas": 300,
+    "ostiones": 400,
     "ceviche": 200,
     "ceviche camaron": 250,
     "aguachile": 260,
@@ -28,260 +36,233 @@ MENU = {
 }
 
 # =========================
-# MEMORIA
-# =========================
-clientes = {}
-sesiones = {}
-
-# =========================
-# HORARIO MÉXICO
+# HORARIO (MÉXICO)
 # =========================
 def dentro_horario():
     ahora = datetime.now(ZoneInfo("America/Mexico_City"))
-    return ahora.weekday() >= 1 and ahora.weekday() <= 6 and 12 <= ahora.hour < 23
+    dia = ahora.weekday()  # 0 lunes
+    hora = ahora.hour
+    return dia >= 1 and dia <= 6 and 12 <= hora < 23
 
 # =========================
-# ENVIAR MENSAJE
+# ENVIAR WHATSAPP
 # =========================
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
     }
-
     data = {
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "text",
         "text": {"body": texto}
     }
-
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚ TEXTO
+# IA CONVERSACIONAL PRO
 # =========================
-def menu_texto():
-    return """🍽️ MENÚ
+def responder_ia(texto):
+    res = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": """
+Eres un asistente del restaurante "Marisco Alegre".
 
-🦪 Almejas $300
-🦪 Ostiones $400
-🐟 Ceviche $200
-🦐 Ceviche camarón $250
-🔥 Aguachile $260
+Hablas como humano, amable, mexicano y con emojis.
 
-🥤 Bebidas:
-🍺 Cerveza $40
-🍹 Michelada $100
-🥤 Refresco $35
+Puedes:
+- conversar natural
+- recomendar platillos
+- responder dudas
+- bromear ligeramente
 
-✍️ Ejemplo:
-"2 almejas y 1 cerveza"
-"dos aguachiles y tres micheladas"
+NO generes pedidos.
+NO cobres.
+Solo conversación.
+
+Respuestas cortas, claras y amigables.
 """
+            },
+            {"role": "user", "content": texto}
+        ]
+    )
+    return res.choices[0].message.content
 
 # =========================
-# 🧠 NORMALIZAR TEXTO
+# MOSTRAR MENÚ
 # =========================
-def normalizar(texto):
+def mostrar_menu(numero):
+    texto = "🦐 Bienvenido a Marisco Alegre 😄\n\n🍽️ MENÚ\n\n"
+    for item, precio in MENU.items():
+        texto += f"• {item.title()} ${precio}\n"
+    texto += "\nEjemplo: 2 almejas y 1 cerveza 🍻"
+    enviar(numero, texto)
+
+# =========================
+# PROCESAR PEDIDO
+# =========================
+def procesar_pedido(texto):
+    pedido = {}
     texto = texto.lower()
 
-    # plural → singular
-    reemplazos = {
-        "almejas": "almeja",
-        "ostiones": "ostion",
-        "cervezas": "cerveza",
-        "micheladas": "michelada",
-        "refrescos": "refresco",
-        "ceviches": "ceviche",
-        "aguachiles": "aguachile"
-    }
+    for item in MENU:
+        if item in texto:
+            palabras = texto.split()
+            cantidad = 1
+            for i, p in enumerate(palabras):
+                if p.isdigit() and i+1 < len(palabras) and item in texto:
+                    cantidad = int(p)
+            pedido[item] = pedido.get(item, 0) + cantidad
 
-    for k, v in reemplazos.items():
-        texto = texto.replace(k, v)
-
-    # texto → número
-    numeros = {
-        "uno": "1", "una": "1",
-        "dos": "2",
-        "tres": "3",
-        "cuatro": "4",
-        "cinco": "5",
-        "seis": "6",
-        "siete": "7",
-        "ocho": "8",
-        "nueve": "9",
-        "diez": "10"
-    }
-
-    for palabra, numero in numeros.items():
-        texto = re.sub(rf"\b{palabra}\b", numero, texto)
-
-    return texto
+    return pedido
 
 # =========================
-# 🛒 PROCESAR PEDIDO IA
+# TOTAL
 # =========================
-def procesar(texto, numero):
-    texto = normalizar(texto)
-    sesion = sesiones[numero]
-    carrito = sesion["carrito"]
-
-    agregado = False
-
-    for producto in MENU:
-        patron = rf"(\d+)\s*{producto}"
-        matches = re.findall(patron, texto)
-
-        for m in matches:
-            cantidad = int(m)
-            precio = MENU[producto]
-
-            carrito.append({
-                "producto": producto,
-                "cantidad": cantidad,
-                "precio": precio
-            })
-
-            agregado = True
-
-    return agregado
+def calcular_total(pedido):
+    total = 0
+    detalle = ""
+    for item, cantidad in pedido.items():
+        precio = MENU[item]
+        subtotal = precio * cantidad
+        total += subtotal
+        detalle += f"• {cantidad} x {item} = ${subtotal}\n"
+    return total, detalle
 
 # =========================
-# 💰 TOTAL
+# WEBHOOK
 # =========================
-def total(carrito, domicilio=False):
-    t = sum(i["cantidad"] * i["precio"] for i in carrito)
-    if domicilio:
-        t += 25
-    return t
-
-# =========================
-# 🧾 RESUMEN
-# =========================
-def resumen(numero):
-    sesion = sesiones[numero]
-    carrito = sesion["carrito"]
-
-    texto = "🧾 TU PEDIDO:\n\n"
-
-    for i in carrito:
-        texto += f"• {i['cantidad']} x {i['producto']} = ${i['cantidad'] * i['precio']}\n"
-
-    envio = sesion["tipo"] == "domicilio"
-
-    if envio:
-        texto += "\n🚚 Envío $25"
-
-    texto += f"\n\n💰 TOTAL: ${total(carrito, envio)}"
-
-    return texto
-
-# =========================
-# 🌐 WEBHOOK
-# =========================
-@app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+    if request.method == "GET":
+        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return request.args.get("hub.challenge")
+        return "Error"
+
     data = request.get_json()
 
     try:
-        value = data["entry"][0]["changes"][0]["value"]
+        mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        numero = mensaje["from"]
+        texto = mensaje["text"]["body"].lower()
+    except:
+        return "ok"
 
-        if "messages" not in value:
-            return "ok"
+    if numero not in sesiones:
+        sesiones[numero] = {
+            "estado": "inicio",
+            "pedido": {},
+            "nombre": "",
+            "direccion": ""
+        }
 
-        msg_data = value["messages"][0]
-        numero = msg_data["from"]
-        mensaje = msg_data["text"]["body"].lower()
+    sesion = sesiones[numero]
 
-        print("Mensaje:", mensaje)
+    # =========================
+    # AGRADECIMIENTO (NO REINICIA)
+    # =========================
+    if "gracias" in texto:
+        enviar(numero, "😊 ¡Gracias a ti! Aquí seguimos para cuando gustes 🦐🍻")
+        sesion["estado"] = "finalizado"
+        return "ok"
 
-        # crear sesión
-        if numero not in sesiones:
-            sesiones[numero] = {
-                "carrito": [],
-                "nombre": None,
-                "direccion": None,
-                "tipo": None
-            }
+    # =========================
+    # SI YA TERMINÓ → CHAT IA
+    # =========================
+    if sesion["estado"] == "finalizado":
+        respuesta = responder_ia(texto)
+        enviar(numero, respuesta)
+        return "ok"
 
-        sesion = sesiones[numero]
+    # =========================
+    # HORARIO
+    # =========================
+    if not dentro_horario():
+        enviar(numero, "⏰ Estamos cerrados.\nAbrimos de martes a domingo de 12 pm a 11 pm 🙏")
+        return "ok"
 
-        # horario
-        if not dentro_horario():
-            enviar(numero, "⏰ Estamos cerrados.\nAbrimos de martes a domingo de 12 pm a 11 pm 🙏")
-            return "ok"
+    # =========================
+    # INICIO
+    # =========================
+    if sesion["estado"] == "inicio":
+        mostrar_menu(numero)
+        sesion["estado"] = "ordenando"
+        return "ok"
 
-        # cliente frecuente
-        if numero in clientes and mensaje in ["hola", "menu"]:
-            enviar(numero, f"😄 Hola {clientes[numero]['nombre']}, ¿quieres lo mismo de la última vez?")
-            return "ok"
+    # =========================
+    # PEDIDO
+    # =========================
+    if sesion["estado"] == "ordenando":
+        pedido = procesar_pedido(texto)
 
-        # saludo
-        if mensaje in ["hola", "menu", "menú"]:
-            enviar(numero, "👋 Bienvenido 😄\n" + menu_texto())
-            return "ok"
+        if pedido:
+            for k, v in pedido.items():
+                sesion["pedido"][k] = sesion["pedido"].get(k, 0) + v
 
-        # pedido IA
-        if procesar(mensaje, numero):
-            enviar(numero, "🛒 Pedido agregado 😎")
-            enviar(numero, "¿Algo más o escribe finalizar?")
-            return "ok"
+            total, detalle = calcular_total(sesion["pedido"])
 
-        # finalizar
-        if "finalizar" in mensaje:
-            if not sesion["carrito"]:
-                enviar(numero, "Tu carrito está vacío 😅")
-                return "ok"
+            enviar(numero, f"🧾 TU PEDIDO:\n\n{detalle}\n💰 Total: ${total}")
+            enviar(numero, "🚚 ¿Es domicilio o recoger?")
+            sesion["estado"] = "tipo_entrega"
+        else:
+            respuesta = responder_ia(texto)
+            enviar(numero, respuesta)
 
-            enviar(numero, resumen(numero))
-            enviar(numero, "\n¿Es domicilio o recoger? 🚚🏪")
-            return "ok"
+        return "ok"
 
-        # tipo entrega
-        if mensaje in ["domicilio", "envio"]:
-            sesion["tipo"] = "domicilio"
+    # =========================
+    # ENTREGA
+    # =========================
+    if sesion["estado"] == "tipo_entrega":
+        if "domicilio" in texto:
+            sesion["domicilio"] = True
             enviar(numero, "📍 Envíame tu dirección")
-            return "ok"
-
-        if mensaje in ["recoger", "tienda"]:
-            sesion["tipo"] = "recoger"
-            enviar(numero, "¿A nombre de quién?")
-            return "ok"
-
-        # dirección
-        if sesion["tipo"] == "domicilio" and not sesion["direccion"]:
-            sesion["direccion"] = mensaje
+            sesion["estado"] = "direccion"
+        else:
+            sesion["domicilio"] = False
             enviar(numero, "🙏 ¿Tu nombre?")
-            return "ok"
+            sesion["estado"] = "nombre"
+        return "ok"
 
-        # nombre
-        if not sesion["nombre"]:
-            sesion["nombre"] = mensaje
+    # =========================
+    # DIRECCIÓN
+    # =========================
+    if sesion["estado"] == "direccion":
+        sesion["direccion"] = texto
+        enviar(numero, "🙏 ¿Tu nombre?")
+        sesion["estado"] = "nombre"
+        return "ok"
 
-            # guardar cliente
-            clientes[numero] = {
-                "nombre": sesion["nombre"],
-                "ultimo_pedido": sesion["carrito"]
-            }
+    # =========================
+    # NOMBRE
+    # =========================
+    if sesion["estado"] == "nombre":
+        sesion["nombre"] = texto
 
-            texto = resumen(numero)
-            texto += f"\n\n👤 Nombre: {sesion['nombre']}"
+        total, detalle = calcular_total(sesion["pedido"])
 
-            if sesion["tipo"] == "domicilio":
-                texto += f"\n📍 Dirección: {sesion['direccion']}"
+        if sesion.get("domicilio"):
+            total += 25
+            detalle += "\n🚚 Envío $25"
 
-            texto += "\n\n✅ Pedido confirmado 😎"
+        enviar(numero, f"""🧾 TU PEDIDO:
 
-            enviar(numero, texto)
+{detalle}
 
-            sesiones.pop(numero)
-            return "ok"
+💰 TOTAL: ${total}
 
-    except Exception as e:
-        print("ERROR:", e)
+👤 Nombre: {sesion['nombre']}
+📍 Dirección: {sesion.get('direccion','Recoger en tienda')}
+
+✅ Pedido confirmado 😎""")
+
+        sesion["estado"] = "finalizado"
+        return "ok"
 
     return "ok"
 
