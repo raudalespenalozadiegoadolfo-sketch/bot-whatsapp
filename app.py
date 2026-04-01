@@ -31,9 +31,16 @@ MENU = {
 }
 
 # 🕒 HORARIO
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 def dentro_horario():
-    ahora = datetime.now()
-    return ahora.weekday() >= 1 and ahora.weekday() <= 6 and 12 <= ahora.hour < 23
+    ahora = datetime.now(ZoneInfo("America/Mexico_City"))
+
+    dia = ahora.weekday()  # 0=lunes
+    hora = ahora.hour
+
+    return dia >= 1 and dia <= 6 and 12 <= hora < 23
 
 # 📩 WHATSAPP
 def enviar(numero, texto):
