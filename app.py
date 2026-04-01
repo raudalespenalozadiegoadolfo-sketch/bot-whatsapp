@@ -3,25 +3,22 @@ import requests
 import os
 import re
 from datetime import datetime
-from openai import OpenAI
+from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
-# 🔐 VARIABLES
-VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
+# =========================
+# VARIABLES
+# =========================
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# 🛒 CARRITOS
-carritos = {}
-
-# 🍽️ MENÚ
+# =========================
+# MENÚ
+# =========================
 MENU = {
-    "almejas": 300,
-    "ostiones": 400,
+    "almeja": 300,
+    "ostion": 400,
     "ceviche": 200,
     "ceviche camaron": 250,
     "aguachile": 260,
@@ -30,19 +27,22 @@ MENU = {
     "refresco": 35
 }
 
-# 🕒 HORARIO
-from datetime import datetime
-from zoneinfo import ZoneInfo
+# =========================
+# MEMORIA (clientes)
+# =========================
+clientes = {}
+sesiones = {}
 
+# =========================
+# HORARIO
+# =========================
 def dentro_horario():
     ahora = datetime.now(ZoneInfo("America/Mexico_City"))
+    return ahora.weekday() >= 1 and ahora.weekday() <= 6 and 12 <= ahora.hour < 23
 
-    dia = ahora.weekday()  # 0=lunes
-    hora = ahora.hour
-
-    return dia >= 1 and dia <= 6 and 12 <= hora < 23
-
-# 📩 WHATSAPP
+# =========================
+# ENVIAR MENSAJE
+# =========================
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {
@@ -57,68 +57,86 @@ def enviar(numero, texto):
     }
     requests.post(url, headers=headers, json=data)
 
-# 🧠 IA RESPUESTA
-def responder_ia(mensaje):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "Eres un mesero amable, divertido, con emojis y enfocado en vender comida."},
-                {"role": "user", "content": mensaje}
-            ]
-        )
-        return response.choices[0].message.content
-    except:
-        return "😅 Hubo un problema, intenta de nuevo."
-
-# 🍽️ MENÚ TEXTO
-def menu_texto():
+# =========================
+# MOSTRAR MENÚ
+# =========================
+def menu():
     return """🍽️ MENÚ
 
-🦪 Comida:
-* Almejas $300
-* Ostiones $400
-* Ceviche $200
-* Ceviche camarón $250
-* Aguachile $260
+🦪 Almejas $300
+🦪 Ostiones $400
+🐟 Ceviche $200
+🦐 Ceviche camarón $250
+🔥 Aguachile $260
 
 🥤 Bebidas:
-* Cerveza $40
-* Michelada $100
-* Refresco $35
+🍺 Cerveza $40
+🍹 Michelada $100
+🥤 Refresco $35
 
-¿Qué deseas ordenar? 😋"""
+Ejemplo: "2 almejas y 1 cerveza"
+"""
 
-# 🛒 PROCESAR PEDIDO INTELIGENTE
-def procesar_pedido(texto, carrito):
-    encontrado = False
+# =========================
+# PROCESAR PEDIDO
+# =========================
+def procesar(texto, numero):
+    texto = texto.lower()
+    sesion = sesiones[numero]
+    carrito = sesion["carrito"]
 
-    for item, precio in MENU.items():
-        if item in texto:
-            match = re.search(rf"(\\d+).*{item}", texto)
-            cantidad = int(match.group(1)) if match else 1
+    agregado = False
 
-            total = cantidad * precio
+    for producto in MENU:
+        matches = re.findall(rf"(\\d+)\s*{producto}", texto)
 
-            carrito["items"].append({
-                "producto": item,
+        for m in matches:
+            cantidad = int(m)
+            precio = MENU[producto]
+
+            carrito.append({
+                "producto": producto,
                 "cantidad": cantidad,
-                "total": total
+                "precio": precio
             })
 
-            carrito["total"] += total
-            encontrado = True
+            agregado = True
 
-    return encontrado
+    return agregado
 
-# 🌐 VERIFY
-@app.route("/webhook", methods=["GET"])
-def verify():
-    if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-        return request.args.get("hub.challenge")
-    return "error", 403
+# =========================
+# TOTAL
+# =========================
+def total(carrito, domicilio=False):
+    t = sum(i["cantidad"] * i["precio"] for i in carrito)
+    if domicilio:
+        t += 25
+    return t
 
-# 🌐 WEBHOOK
+# =========================
+# RESUMEN
+# =========================
+def resumen(numero):
+    sesion = sesiones[numero]
+    carrito = sesion["carrito"]
+
+    texto = "🧾 TU PEDIDO:\n\n"
+
+    for i in carrito:
+        texto += f"- {i['cantidad']} {i['producto']} = ${i['cantidad'] * i['precio']}\n"
+
+    envio = sesion["tipo"] == "domicilio"
+
+    if envio:
+        texto += "\n🚚 Envío $25"
+
+    texto += f"\n\n💰 Total: ${total(carrito, envio)}"
+
+    return texto
+
+# =========================
+# WEBHOOK
+# =========================
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -127,72 +145,78 @@ def webhook():
         value = data["entry"][0]["changes"][0]["value"]
 
         if "messages" not in value:
-            return "ok", 200
+            return "ok"
 
         msg = value["messages"][0]["text"]["body"].lower()
         numero = value["messages"][0]["from"]
 
-        if numero not in carritos:
-            carritos[numero] = {
-                "items": [],
-                "total": 0,
-                "estado": "inicio"
+        # crear sesión
+        if numero not in sesiones:
+            sesiones[numero] = {
+                "carrito": [],
+                "nombre": None,
+                "direccion": None,
+                "tipo": None
             }
 
-        carrito = carritos[numero]
+        sesion = sesiones[numero]
 
-        # 🕒 horario
+        # horario
         if not dentro_horario():
-            enviar(numero, "⏰ Estamos cerrados.\nAbrimos de martes a domingo de 12 a 6 pm 🙏")
-            return "ok", 200
+            enviar(numero, "⏰ Cerrado. Abrimos de 12 a 11 pm")
+            return "ok"
 
-        # 👋 saludo
-        if carrito["estado"] == "inicio":
-            carrito["estado"] = "pedido"
-            enviar(numero, f"¡Hola! 😊 Bienvenido\n\n{menu_texto()}")
-            return "ok", 200
+        # cliente conocido
+        if numero in clientes and msg in ["hola", "menu"]:
+            enviar(numero, f"😄 Hola {clientes[numero]['nombre']}, ¿quieres lo mismo de la última vez?")
+            return "ok"
 
-        # 🛒 pedido
-        if carrito["estado"] == "pedido":
-            agregado = procesar_pedido(msg, carrito)
+        # saludo
+        if msg in ["hola", "menu"]:
+            enviar(numero, "👋 Bienvenido 😄\n" + menu())
+            return "ok"
 
-            if agregado:
-                resumen = "🛒 Tu carrito:\n\n"
-                for item in carrito["items"]:
-                    resumen += f"- {item['cantidad']} x {item['producto']} = ${item['total']}\n"
+        # pedido
+        if procesar(msg, numero):
+            enviar(numero, "🛒 Agregado. ¿Algo más o escribe finalizar?")
+            return "ok"
 
-                resumen += f"\n💰 Total: ${carrito['total']}"
-                resumen += "\n\nEscribe confirmar para finalizar 😄"
+        # finalizar
+        if "finalizar" in msg:
+            enviar(numero, resumen(numero))
+            enviar(numero, "¿Domicilio o recoger?")
+            return "ok"
 
-                enviar(numero, resumen)
-            else:
-                # IA responde si no detecta pedido
-                respuesta = responder_ia(msg)
-                enviar(numero, respuesta)
+        # entrega
+        if msg in ["domicilio", "recoger"]:
+            sesion["tipo"] = msg
+            enviar(numero, "¿Tu nombre?")
+            return "ok"
 
-            return "ok", 200
+        # nombre
+        if not sesion["nombre"]:
+            sesion["nombre"] = msg
+            enviar(numero, "📍 Dirección:")
+            return "ok"
 
-        # ✅ confirmar
-        if "confirmar" in msg:
-            carrito["estado"] = "final"
-            enviar(numero, "🚚 ¿Es domicilio o recoger?")
-            return "ok", 200
+        # dirección
+        if not sesion["direccion"]:
+            sesion["direccion"] = msg
 
-        # 🚚 final
-        if carrito["estado"] == "final":
-            if "domicilio" in msg:
-                carrito["total"] += 25
-                enviar(numero, f"🧾 Total con envío: ${carrito['total']}\n\nGracias por tu pedido 😄🍽️")
-            else:
-                enviar(numero, f"🧾 Total: ${carrito['total']}\n\nPasa a recoger 😄")
+            # guardar cliente
+            clientes[numero] = {
+                "nombre": sesion["nombre"],
+                "ultimo_pedido": sesion["carrito"]
+            }
 
-            carritos[numero] = {"items": [], "total": 0, "estado": "inicio"}
-            return "ok", 200
+            enviar(numero, resumen(numero))
+            enviar(numero, "✅ Pedido confirmado 😎")
+
+            sesiones.pop(numero)
+
+            return "ok"
 
     except Exception as e:
         print("ERROR:", e)
 
-    return "ok", 200
-
-if __name__ == "__main__":
-    app.run()
+    return "ok"
