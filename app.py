@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# 📌 DATOS DEL NEGOCIO
+# 📌 MENÚ
 MENU = """
 🍽️ MENÚ
 
@@ -26,10 +26,10 @@ MENU = """
 
 HORARIO = "🕒 Martes a Domingo de 12:00 PM a 6:00 PM"
 
-# 📌 ENVIAR MENSAJE
+# 📌 ENVIAR MENSAJE WHATSAPP
 def enviar_whatsapp(numero, mensaje):
     url = f"https://graph.facebook.com/v17.0/{os.environ.get('PHONE_NUMBER_ID')}/messages"
-    
+
     headers = {
         "Authorization": f"Bearer {os.environ.get('WHATSAPP_ACCESS_TOKEN')}",
         "Content-Type": "application/json"
@@ -44,25 +44,31 @@ def enviar_whatsapp(numero, mensaje):
 
     requests.post(url, headers=headers, json=data)
 
-# 📌 WEBHOOK VERIFY
+# 📌 VERIFICACIÓN WEBHOOK
 @app.route("/webhook", methods=["GET"])
 def verify():
     if request.args.get("hub.verify_token") == os.environ.get("MY_VERIFY_TOKEN"):
         return request.args.get("hub.challenge")
     return "Error", 403
 
-# 📌 WEBHOOK MENSAJES
+# 📌 RECEPCIÓN DE MENSAJES
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
 
     try:
-        mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
-        numero = data["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
+        value = data["entry"][0]["changes"][0]["value"]
 
-        print("Mensaje:", mensaje)
+        # 🔥 SOLUCIÓN AL ERROR 'messages'
+        if "messages" not in value:
+            return "ok", 200
 
-        # 🧠 PROMPT DEL BOT
+        mensaje = value["messages"][0]["text"]["body"]
+        numero = value["messages"][0]["from"]
+
+        print("Mensaje recibido:", mensaje)
+
+        # 🧠 PROMPT INTELIGENTE
         prompt = f"""
 Eres un bot de restaurante amable con emojis.
 
@@ -73,13 +79,16 @@ Horario:
 {HORARIO}
 
 Reglas:
-- Muestra el menú si te lo piden
-- Ayuda a tomar pedidos
-- Pregunta si desea algo más
-- Pide nombre y dirección
+- Sé amable y usa emojis
+- Muestra el menú si lo piden
+- Toma pedidos
+- Pregunta si desean algo más
+- Pide nombre del cliente
+- Pide dirección
 - Calcula total
 - Si es domicilio agrega $25
-- Responde con emojis y amable
+- Si recogen no agregues costo
+- Entrega resumen final claro
 
 Cliente dice: {mensaje}
 """
@@ -97,7 +106,7 @@ Cliente dice: {mensaje}
         enviar_whatsapp(numero, texto)
 
     except Exception as e:
-        print("ERROR:", e)
+        print("ERROR GENERAL:", e)
 
     return "ok", 200
 
