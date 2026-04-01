@@ -33,7 +33,7 @@ MENU = {
 # 🕒 HORARIO
 def dentro_horario():
     ahora = datetime.now()
-    return ahora.weekday() >= 1 and ahora.weekday() <= 6 and 12 <= ahora.hour < 18
+    return ahora.weekday() >= 1 and ahora.weekday() <= 11 and 12 <= ahora.hour < 18
 
 # 📩 WHATSAPP
 def enviar(numero, texto):
