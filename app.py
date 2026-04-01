@@ -1,71 +1,117 @@
 from flask import Flask, request
 import requests
 import os
+import re
+from datetime import datetime
 from openai import OpenAI
 
 app = Flask(__name__)
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# 🔐 VARIABLES
+VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# 📌 MENÚ
-MENU_ITEMS = {
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# 🛒 CARRITOS
+carritos = {}
+
+# 🍽️ MENÚ
+MENU = {
     "almejas": 300,
     "ostiones": 400,
     "ceviche": 200,
-    "ceviche camarón": 250,
+    "ceviche camaron": 250,
     "aguachile": 260,
     "cerveza": 40,
     "michelada": 100,
     "refresco": 35
 }
 
-MENU_TEXTO = """
-🍽️ MENÚ
+# 🕒 HORARIO
+def dentro_horario():
+    ahora = datetime.now()
+    return ahora.weekday() >= 1 and ahora.weekday() <= 6 and 12 <= ahora.hour < 18
 
-🦪 Comida:
-- Almejas $300
-- Ostiones $400
-- Ceviche $200
-- Ceviche camarón $250
-- Aguachile $260
-
-🥤 Bebidas:
-- Cerveza $40
-- Michelada $100
-- Refresco $35
-"""
-
-HORARIO = "🕒 Martes a Domingo de 12 PM a 6 PM"
-
-# 📦 CARRITO EN MEMORIA
-carritos = {}
-
-# 📌 ENVIAR MENSAJE
-def enviar_whatsapp(numero, mensaje):
-    url = f"https://graph.facebook.com/v17.0/{os.environ.get('PHONE_NUMBER_ID')}/messages"
-
+# 📩 WHATSAPP
+def enviar(numero, texto):
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {os.environ.get('WHATSAPP_ACCESS_TOKEN')}",
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
     }
-
     data = {
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "text",
-        "text": {"body": mensaje}
+        "text": {"body": texto}
     }
-
     requests.post(url, headers=headers, json=data)
 
-# 📌 WEBHOOK VERIFY
+# 🧠 IA RESPUESTA
+def responder_ia(mensaje):
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": "Eres un mesero amable, divertido, con emojis y enfocado en vender comida."},
+                {"role": "user", "content": mensaje}
+            ]
+        )
+        return response.choices[0].message.content
+    except:
+        return "😅 Hubo un problema, intenta de nuevo."
+
+# 🍽️ MENÚ TEXTO
+def menu_texto():
+    return """🍽️ MENÚ
+
+🦪 Comida:
+* Almejas $300
+* Ostiones $400
+* Ceviche $200
+* Ceviche camarón $250
+* Aguachile $260
+
+🥤 Bebidas:
+* Cerveza $40
+* Michelada $100
+* Refresco $35
+
+¿Qué deseas ordenar? 😋"""
+
+# 🛒 PROCESAR PEDIDO INTELIGENTE
+def procesar_pedido(texto, carrito):
+    encontrado = False
+
+    for item, precio in MENU.items():
+        if item in texto:
+            match = re.search(rf"(\\d+).*{item}", texto)
+            cantidad = int(match.group(1)) if match else 1
+
+            total = cantidad * precio
+
+            carrito["items"].append({
+                "producto": item,
+                "cantidad": cantidad,
+                "total": total
+            })
+
+            carrito["total"] += total
+            encontrado = True
+
+    return encontrado
+
+# 🌐 VERIFY
 @app.route("/webhook", methods=["GET"])
 def verify():
-    if request.args.get("hub.verify_token") == os.environ.get("MY_VERIFY_TOKEN"):
+    if request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge")
-    return "Error", 403
+    return "error", 403
 
-# 📌 WEBHOOK MENSAJES
+# 🌐 WEBHOOK
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -76,117 +122,70 @@ def webhook():
         if "messages" not in value:
             return "ok", 200
 
-        mensaje = value["messages"][0]["text"]["body"].lower()
+        msg = value["messages"][0]["text"]["body"].lower()
         numero = value["messages"][0]["from"]
 
-        print("Mensaje:", mensaje)
-
-        # 🧠 CREAR CARRITO SI NO EXISTE
         if numero not in carritos:
             carritos[numero] = {
                 "items": [],
                 "total": 0,
-                "nombre": None,
-                "direccion": None,
                 "estado": "inicio"
             }
 
         carrito = carritos[numero]
 
-        # 🔥 MOSTRAR MENÚ
-        if mensaje in ["hola", "menu", "menú", "si", "sí"]:
-            enviar_whatsapp(numero, f"¡Hola! 😊 Aquí tienes nuestro menú:\n{MENU_TEXTO}\n¿Qué deseas ordenar? 🍽️")
-            carrito["estado"] = "ordenando"
+        # 🕒 horario
+        if not dentro_horario():
+            enviar(numero, "⏰ Estamos cerrados.\nAbrimos de martes a domingo de 12 a 6 pm 🙏")
             return "ok", 200
 
-        # 🛒 AGREGAR PRODUCTOS
-        for item, precio in MENU_ITEMS.items():
-            if item in mensaje:
-                carrito["items"].append((item, precio))
-                carrito["total"] += precio
-
-                enviar_whatsapp(numero, f"✅ Agregaste {item} (${precio})\n\n¿Deseas algo más? 😄")
-                carrito["estado"] = "ordenando"
-                return "ok", 200
-
-        # ➕ MÁS PRODUCTOS
-        if mensaje in ["si", "sí"] and carrito["estado"] == "ordenando":
-            enviar_whatsapp(numero, "Perfecto 😄 ¿Qué más deseas agregar?")
+        # 👋 saludo
+        if carrito["estado"] == "inicio":
+            carrito["estado"] = "pedido"
+            enviar(numero, f"¡Hola! 😊 Bienvenido\n\n{menu_texto()}")
             return "ok", 200
 
-        # ❌ TERMINAR PEDIDO
-        if mensaje in ["no", "nada", "ya"] and carrito["estado"] == "ordenando":
-            enviar_whatsapp(numero, "👌 Perfecto. ¿Cuál es tu nombre?")
-            carrito["estado"] = "nombre"
-            return "ok", 200
+        # 🛒 pedido
+        if carrito["estado"] == "pedido":
+            agregado = procesar_pedido(msg, carrito)
 
-        # 👤 GUARDAR NOMBRE
-        if carrito["estado"] == "nombre":
-            carrito["nombre"] = mensaje
-            enviar_whatsapp(numero, "📍 Envíame tu dirección por favor")
-            carrito["estado"] = "direccion"
-            return "ok", 200
+            if agregado:
+                resumen = "🛒 Tu carrito:\n\n"
+                for item in carrito["items"]:
+                    resumen += f"- {item['cantidad']} x {item['producto']} = ${item['total']}\n"
 
-        # 📍 GUARDAR DIRECCIÓN
-        if carrito["estado"] == "direccion":
-            carrito["direccion"] = mensaje
-            enviar_whatsapp(numero, "🚚 ¿Es a domicilio o recogerás en tienda?")
-            carrito["estado"] = "tipo_entrega"
-            return "ok", 200
+                resumen += f"\n💰 Total: ${carrito['total']}"
+                resumen += "\n\nEscribe confirmar para finalizar 😄"
 
-        # 🚚 ENTREGA
-        if carrito["estado"] == "tipo_entrega":
-            envio = 0
-
-            if "domicilio" in mensaje:
-                envio = 25
-
-            total_final = carrito["total"] + envio
-
-            # 🧾 TICKET
-            resumen = "🧾 RESUMEN DE TU PEDIDO\n\n"
-
-            for item, precio in carrito["items"]:
-                resumen += f"- {item} ${precio}\n"
-
-            resumen += f"\nSubtotal: ${carrito['total']}"
-            resumen += f"\nEnvío: ${envio}"
-            resumen += f"\n💰 Total: ${total_final}\n\n"
-
-            resumen += f"👤 Nombre: {carrito['nombre']}\n"
-            resumen += f"📍 Dirección: {carrito['direccion']}\n\n"
-            resumen += "🙏 ¡Gracias por tu pedido!"
-
-            enviar_whatsapp(numero, resumen)
-
-            # 🔄 REINICIAR
-            carritos[numero] = {
-                "items": [],
-                "total": 0,
-                "nombre": None,
-                "direccion": None,
-                "estado": "inicio"
-            }
+                enviar(numero, resumen)
+            else:
+                # IA responde si no detecta pedido
+                respuesta = responder_ia(msg)
+                enviar(numero, respuesta)
 
             return "ok", 200
 
-        # 🤖 RESPUESTA IA (fallback)
-        respuesta = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Eres un bot amable de restaurante"},
-                {"role": "user", "content": mensaje}
-            ]
-        )
+        # ✅ confirmar
+        if "confirmar" in msg:
+            carrito["estado"] = "final"
+            enviar(numero, "🚚 ¿Es domicilio o recoger?")
+            return "ok", 200
 
-        texto = respuesta.choices[0].message.content
-        enviar_whatsapp(numero, texto)
+        # 🚚 final
+        if carrito["estado"] == "final":
+            if "domicilio" in msg:
+                carrito["total"] += 25
+                enviar(numero, f"🧾 Total con envío: ${carrito['total']}\n\nGracias por tu pedido 😄🍽️")
+            else:
+                enviar(numero, f"🧾 Total: ${carrito['total']}\n\nPasa a recoger 😄")
+
+            carritos[numero] = {"items": [], "total": 0, "estado": "inicio"}
+            return "ok", 200
 
     except Exception as e:
         print("ERROR:", e)
 
     return "ok", 200
-
 
 if __name__ == "__main__":
     app.run()
