@@ -28,13 +28,13 @@ MENU = {
 }
 
 # =========================
-# MEMORIA (clientes)
+# MEMORIA
 # =========================
 clientes = {}
 sesiones = {}
 
 # =========================
-# HORARIO
+# HORARIO MÉXICO
 # =========================
 def dentro_horario():
     ahora = datetime.now(ZoneInfo("America/Mexico_City"))
@@ -45,22 +45,25 @@ def dentro_horario():
 # =========================
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
     }
+
     data = {
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "text",
         "text": {"body": texto}
     }
+
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MOSTRAR MENÚ
+# MENÚ TEXTO
 # =========================
-def menu():
+def menu_texto():
     return """🍽️ MENÚ
 
 🦪 Almejas $300
@@ -74,21 +77,63 @@ def menu():
 🍹 Michelada $100
 🥤 Refresco $35
 
-Ejemplo: "2 almejas y 1 cerveza"
+✍️ Ejemplo:
+"2 almejas y 1 cerveza"
+"dos aguachiles y tres micheladas"
 """
 
 # =========================
-# PROCESAR PEDIDO
+# 🧠 NORMALIZAR TEXTO
+# =========================
+def normalizar(texto):
+    texto = texto.lower()
+
+    # plural → singular
+    reemplazos = {
+        "almejas": "almeja",
+        "ostiones": "ostion",
+        "cervezas": "cerveza",
+        "micheladas": "michelada",
+        "refrescos": "refresco",
+        "ceviches": "ceviche",
+        "aguachiles": "aguachile"
+    }
+
+    for k, v in reemplazos.items():
+        texto = texto.replace(k, v)
+
+    # texto → número
+    numeros = {
+        "uno": "1", "una": "1",
+        "dos": "2",
+        "tres": "3",
+        "cuatro": "4",
+        "cinco": "5",
+        "seis": "6",
+        "siete": "7",
+        "ocho": "8",
+        "nueve": "9",
+        "diez": "10"
+    }
+
+    for palabra, numero in numeros.items():
+        texto = re.sub(rf"\b{palabra}\b", numero, texto)
+
+    return texto
+
+# =========================
+# 🛒 PROCESAR PEDIDO IA
 # =========================
 def procesar(texto, numero):
-    texto = texto.lower()
+    texto = normalizar(texto)
     sesion = sesiones[numero]
     carrito = sesion["carrito"]
 
     agregado = False
 
     for producto in MENU:
-        matches = re.findall(rf"(\\d+)\s*{producto}", texto)
+        patron = rf"(\d+)\s*{producto}"
+        matches = re.findall(patron, texto)
 
         for m in matches:
             cantidad = int(m)
@@ -105,7 +150,7 @@ def procesar(texto, numero):
     return agregado
 
 # =========================
-# TOTAL
+# 💰 TOTAL
 # =========================
 def total(carrito, domicilio=False):
     t = sum(i["cantidad"] * i["precio"] for i in carrito)
@@ -114,7 +159,7 @@ def total(carrito, domicilio=False):
     return t
 
 # =========================
-# RESUMEN
+# 🧾 RESUMEN
 # =========================
 def resumen(numero):
     sesion = sesiones[numero]
@@ -123,19 +168,19 @@ def resumen(numero):
     texto = "🧾 TU PEDIDO:\n\n"
 
     for i in carrito:
-        texto += f"- {i['cantidad']} {i['producto']} = ${i['cantidad'] * i['precio']}\n"
+        texto += f"• {i['cantidad']} x {i['producto']} = ${i['cantidad'] * i['precio']}\n"
 
     envio = sesion["tipo"] == "domicilio"
 
     if envio:
         texto += "\n🚚 Envío $25"
 
-    texto += f"\n\n💰 Total: ${total(carrito, envio)}"
+    texto += f"\n\n💰 TOTAL: ${total(carrito, envio)}"
 
     return texto
 
 # =========================
-# WEBHOOK
+# 🌐 WEBHOOK
 # =========================
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -147,8 +192,11 @@ def webhook():
         if "messages" not in value:
             return "ok"
 
-        msg = value["messages"][0]["text"]["body"].lower()
-        numero = value["messages"][0]["from"]
+        msg_data = value["messages"][0]
+        numero = msg_data["from"]
+        mensaje = msg_data["text"]["body"].lower()
+
+        print("Mensaje:", mensaje)
 
         # crear sesión
         if numero not in sesiones:
@@ -163,45 +211,55 @@ def webhook():
 
         # horario
         if not dentro_horario():
-            enviar(numero, "⏰ Cerrado. Abrimos de 12 a 11 pm")
+            enviar(numero, "⏰ Estamos cerrados.\nAbrimos de martes a domingo de 12 pm a 11 pm 🙏")
             return "ok"
 
-        # cliente conocido
-        if numero in clientes and msg in ["hola", "menu"]:
+        # cliente frecuente
+        if numero in clientes and mensaje in ["hola", "menu"]:
             enviar(numero, f"😄 Hola {clientes[numero]['nombre']}, ¿quieres lo mismo de la última vez?")
             return "ok"
 
         # saludo
-        if msg in ["hola", "menu"]:
-            enviar(numero, "👋 Bienvenido 😄\n" + menu())
+        if mensaje in ["hola", "menu", "menú"]:
+            enviar(numero, "👋 Bienvenido 😄\n" + menu_texto())
             return "ok"
 
-        # pedido
-        if procesar(msg, numero):
-            enviar(numero, "🛒 Agregado. ¿Algo más o escribe finalizar?")
+        # pedido IA
+        if procesar(mensaje, numero):
+            enviar(numero, "🛒 Pedido agregado 😎")
+            enviar(numero, "¿Algo más o escribe finalizar?")
             return "ok"
 
         # finalizar
-        if "finalizar" in msg:
+        if "finalizar" in mensaje:
+            if not sesion["carrito"]:
+                enviar(numero, "Tu carrito está vacío 😅")
+                return "ok"
+
             enviar(numero, resumen(numero))
-            enviar(numero, "¿Domicilio o recoger?")
+            enviar(numero, "\n¿Es domicilio o recoger? 🚚🏪")
             return "ok"
 
-        # entrega
-        if msg in ["domicilio", "recoger"]:
-            sesion["tipo"] = msg
-            enviar(numero, "¿Tu nombre?")
+        # tipo entrega
+        if mensaje in ["domicilio", "envio"]:
+            sesion["tipo"] = "domicilio"
+            enviar(numero, "📍 Envíame tu dirección")
+            return "ok"
+
+        if mensaje in ["recoger", "tienda"]:
+            sesion["tipo"] = "recoger"
+            enviar(numero, "¿A nombre de quién?")
+            return "ok"
+
+        # dirección
+        if sesion["tipo"] == "domicilio" and not sesion["direccion"]:
+            sesion["direccion"] = mensaje
+            enviar(numero, "🙏 ¿Tu nombre?")
             return "ok"
 
         # nombre
         if not sesion["nombre"]:
-            sesion["nombre"] = msg
-            enviar(numero, "📍 Dirección:")
-            return "ok"
-
-        # dirección
-        if not sesion["direccion"]:
-            sesion["direccion"] = msg
+            sesion["nombre"] = mensaje
 
             # guardar cliente
             clientes[numero] = {
@@ -209,14 +267,26 @@ def webhook():
                 "ultimo_pedido": sesion["carrito"]
             }
 
-            enviar(numero, resumen(numero))
-            enviar(numero, "✅ Pedido confirmado 😎")
+            texto = resumen(numero)
+            texto += f"\n\n👤 Nombre: {sesion['nombre']}"
+
+            if sesion["tipo"] == "domicilio":
+                texto += f"\n📍 Dirección: {sesion['direccion']}"
+
+            texto += "\n\n✅ Pedido confirmado 😎"
+
+            enviar(numero, texto)
 
             sesiones.pop(numero)
-
             return "ok"
 
     except Exception as e:
         print("ERROR:", e)
 
     return "ok"
+
+# =========================
+# RUN
+# =========================
+if __name__ == "__main__":
+    app.run(port=5000
