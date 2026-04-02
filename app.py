@@ -13,11 +13,10 @@ app = Flask(__name__)
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
-
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # =========================
-# MEMORIA (SESIONES)
+# MEMORIA
 # =========================
 sesiones = {}
 
@@ -36,16 +35,16 @@ MENU = {
 }
 
 # =========================
-# HORARIO (MÉXICO)
+# HORARIO MÉXICO
 # =========================
 def dentro_horario():
     ahora = datetime.now(ZoneInfo("America/Mexico_City"))
-    dia = ahora.weekday()  # 0 lunes
+    dia = ahora.weekday()
     hora = ahora.hour
-    return dia >= 1 and dia <= 6 and 12 <= hora < 23
+    return 1 <= dia <= 6 and 12 <= hora < 23
 
 # =========================
-# ENVIAR WHATSAPP
+# ENVIAR MENSAJE
 # =========================
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -62,7 +61,7 @@ def enviar(numero, texto):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# IA CONVERSACIONAL PRO
+# IA CONVERSACIONAL
 # =========================
 def responder_ia(texto):
     res = client.chat.completions.create(
@@ -73,25 +72,48 @@ def responder_ia(texto):
                 "content": """
 Eres un asistente del restaurante "Marisco Alegre".
 
-Hablas como humano, amable, mexicano y con emojis.
+Hablas como humano, natural, amable y con emojis mexicanos.
 
 Puedes:
-- conversar natural
-- recomendar platillos
+- conversar normal
+- recomendar comida
 - responder dudas
 - bromear ligeramente
 
-NO generes pedidos.
-NO cobres.
+IMPORTANTE:
+No generes pedidos ni cobros.
 Solo conversación.
 
-Respuestas cortas, claras y amigables.
+Respuestas cortas y amigables.
 """
             },
             {"role": "user", "content": texto}
         ]
     )
     return res.choices[0].message.content
+
+# =========================
+# DETECTAR INTENCIÓN
+# =========================
+def detectar_intencion(texto):
+    texto = texto.lower()
+
+    if any(x in texto for x in ["modificar", "cambiar", "editar"]):
+        return "modificar"
+
+    if any(x in texto for x in ["cancelar", "ya no"]):
+        return "cancelar"
+
+    if "menu" in texto:
+        return "menu"
+
+    if any(x in texto for x in ["gracias", "ok", "perfecto"]):
+        return "agradecimiento"
+
+    if any(x in texto for x in ["hola", "oye", "recomiendas", "que tal"]):
+        return "conversacion"
+
+    return "pedido"
 
 # =========================
 # MOSTRAR MENÚ
@@ -108,30 +130,31 @@ def mostrar_menu(numero):
 # =========================
 def procesar_pedido(texto):
     pedido = {}
-    texto = texto.lower()
+    palabras = texto.lower().split()
 
-    for item in MENU:
-        if item in texto:
-            palabras = texto.split()
-            cantidad = 1
-            for i, p in enumerate(palabras):
-                if p.isdigit() and i+1 < len(palabras) and item in texto:
-                    cantidad = int(p)
-            pedido[item] = pedido.get(item, 0) + cantidad
+    for i, palabra in enumerate(palabras):
+        if palabra.isdigit() and i + 1 < len(palabras):
+            cantidad = int(palabra)
+            siguiente = palabras[i + 1]
+
+            for item in MENU:
+                if siguiente in item:
+                    pedido[item] = pedido.get(item, 0) + cantidad
 
     return pedido
 
 # =========================
-# TOTAL
+# CALCULAR TOTAL
 # =========================
 def calcular_total(pedido):
     total = 0
     detalle = ""
+
     for item, cantidad in pedido.items():
-        precio = MENU[item]
-        subtotal = precio * cantidad
+        subtotal = MENU[item] * cantidad
         total += subtotal
         detalle += f"• {cantidad} x {item} = ${subtotal}\n"
+
     return total, detalle
 
 # =========================
@@ -139,6 +162,7 @@ def calcular_total(pedido):
 # =========================
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
@@ -158,25 +182,45 @@ def webhook():
             "estado": "inicio",
             "pedido": {},
             "nombre": "",
-            "direccion": ""
+            "direccion": "",
+            "domicilio": False
         }
 
     sesion = sesiones[numero]
+    intencion = detectar_intencion(texto)
 
     # =========================
-    # AGRADECIMIENTO (NO REINICIA)
+    # INTENCIONES
     # =========================
-    if "gracias" in texto:
+
+    if intencion == "agradecimiento":
         enviar(numero, "😊 ¡Gracias a ti! Aquí seguimos para cuando gustes 🦐🍻")
         sesion["estado"] = "finalizado"
         return "ok"
 
-    # =========================
-    # SI YA TERMINÓ → CHAT IA
-    # =========================
-    if sesion["estado"] == "finalizado":
-        respuesta = responder_ia(texto)
-        enviar(numero, respuesta)
+    if intencion == "cancelar":
+        sesiones[numero] = {
+            "estado": "inicio",
+            "pedido": {},
+            "nombre": "",
+            "direccion": "",
+            "domicilio": False
+        }
+        enviar(numero, "❌ Pedido cancelado. ¿Quieres ordenar algo nuevo? 😄")
+        return "ok"
+
+    if intencion == "menu":
+        mostrar_menu(numero)
+        sesion["estado"] = "ordenando"
+        return "ok"
+
+    if intencion == "modificar":
+        sesion["estado"] = "ordenando"
+        enviar(numero, "✏️ Dime cómo quieres modificar tu pedido 😊")
+        return "ok"
+
+    if intencion == "conversacion":
+        enviar(numero, responder_ia(texto))
         return "ok"
 
     # =========================
@@ -198,6 +242,7 @@ def webhook():
     # PEDIDO
     # =========================
     if sesion["estado"] == "ordenando":
+
         pedido = procesar_pedido(texto)
 
         if pedido:
@@ -210,8 +255,7 @@ def webhook():
             enviar(numero, "🚚 ¿Es domicilio o recoger?")
             sesion["estado"] = "tipo_entrega"
         else:
-            respuesta = responder_ia(texto)
-            enviar(numero, respuesta)
+            enviar(numero, responder_ia(texto))
 
         return "ok"
 
@@ -242,11 +286,17 @@ def webhook():
     # NOMBRE
     # =========================
     if sesion["estado"] == "nombre":
+
+        # Evita errores tipo "gracias"
+        if any(x in texto for x in ["gracias", "cancelar"]):
+            enviar(numero, "😅 Necesito tu nombre para completar el pedido 🙏")
+            return "ok"
+
         sesion["nombre"] = texto
 
         total, detalle = calcular_total(sesion["pedido"])
 
-        if sesion.get("domicilio"):
+        if sesion["domicilio"]:
             total += 25
             detalle += "\n🚚 Envío $25"
 
@@ -266,8 +316,6 @@ def webhook():
 
     return "ok"
 
-# =========================
-# RUN
-# =========================
+
 if __name__ == "__main__":
     app.run(port=5000)
