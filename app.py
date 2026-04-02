@@ -24,8 +24,8 @@ sesiones = {}
 # MENÚ
 # =========================
 MENU = {
-    "almejas": 300,
-    "ostiones": 400,
+    "almeja": 300,
+    "ostion": 400,
     "ceviche": 200,
     "ceviche camaron": 250,
     "aguachile": 260,
@@ -44,7 +44,7 @@ def dentro_horario():
     return 1 <= dia <= 6 and 12 <= hora < 23
 
 # =========================
-# ENVIAR MENSAJE
+# ENVIAR WHATSAPP
 # =========================
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -72,19 +72,12 @@ def responder_ia(texto):
                 "content": """
 Eres un asistente del restaurante "Marisco Alegre".
 
-Hablas como humano, natural, amable y con emojis mexicanos.
+Hablas como humano, amable, mexicano y con emojis.
 
-Puedes:
-- conversar normal
-- recomendar comida
-- responder dudas
-- bromear ligeramente
-
-IMPORTANTE:
+Puedes conversar, recomendar comida y responder dudas.
 No generes pedidos ni cobros.
-Solo conversación.
 
-Respuestas cortas y amigables.
+Responde breve y natural.
 """
             },
             {"role": "user", "content": texto}
@@ -116,30 +109,49 @@ def detectar_intencion(texto):
     return "pedido"
 
 # =========================
-# MOSTRAR MENÚ
+# NORMALIZAR TEXTO
 # =========================
-def mostrar_menu(numero):
-    texto = "🦐 Bienvenido a Marisco Alegre 😄\n\n🍽️ MENÚ\n\n"
-    for item, precio in MENU.items():
-        texto += f"• {item.title()} ${precio}\n"
-    texto += "\nEjemplo: 2 almejas y 1 cerveza 🍻"
-    enviar(numero, texto)
+def normalizar(texto):
+    reemplazos = {
+        "almejas": "almeja",
+        "ostiones": "ostion",
+        "cervezas": "cerveza",
+        "micheladas": "michelada",
+        "aguachiles": "aguachile"
+    }
+
+    texto = texto.lower()
+
+    for k, v in reemplazos.items():
+        texto = texto.replace(k, v)
+
+    return texto
 
 # =========================
-# PROCESAR PEDIDO
+# PROCESAR PEDIDO (MEJORADO)
 # =========================
 def procesar_pedido(texto):
+    texto = normalizar(texto)
     pedido = {}
-    palabras = texto.lower().split()
 
-    for i, palabra in enumerate(palabras):
-        if palabra.isdigit() and i + 1 < len(palabras):
-            cantidad = int(palabra)
-            siguiente = palabras[i + 1]
+    lineas = texto.split("\n")
 
-            for item in MENU:
-                if siguiente in item:
-                    pedido[item] = pedido.get(item, 0) + cantidad
+    for linea in lineas:
+        palabras = linea.split()
+
+        cantidad = None
+        producto = None
+
+        for palabra in palabras:
+            if palabra.isdigit():
+                cantidad = int(palabra)
+
+        for item in MENU:
+            if item in linea:
+                producto = item
+
+        if cantidad and producto:
+            pedido[producto] = pedido.get(producto, 0) + cantidad
 
     return pedido
 
@@ -158,6 +170,16 @@ def calcular_total(pedido):
     return total, detalle
 
 # =========================
+# MOSTRAR MENÚ
+# =========================
+def mostrar_menu(numero):
+    texto = "🦐 Bienvenido a Marisco Alegre 😄\n\n🍽️ MENÚ:\n\n"
+    for item, precio in MENU.items():
+        texto += f"• {item.title()} ${precio}\n"
+    texto += "\nEjemplo: 2 almejas y 1 cerveza 🍻"
+    enviar(numero, texto)
+
+# =========================
 # WEBHOOK
 # =========================
 @app.route("/webhook", methods=["GET", "POST"])
@@ -173,7 +195,7 @@ def webhook():
     try:
         mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
         numero = mensaje["from"]
-        texto = mensaje["text"]["body"].lower()
+        texto = mensaje["text"]["body"]
     except:
         return "ok"
 
@@ -194,7 +216,7 @@ def webhook():
     # =========================
 
     if intencion == "agradecimiento":
-        enviar(numero, "😊 ¡Gracias a ti! Aquí seguimos para cuando gustes 🦐🍻")
+        enviar(numero, "😊 ¡Gracias! Aquí seguimos para cuando gustes 🦐🍻")
         sesion["estado"] = "finalizado"
         return "ok"
 
@@ -206,7 +228,7 @@ def webhook():
             "direccion": "",
             "domicilio": False
         }
-        enviar(numero, "❌ Pedido cancelado. ¿Quieres ordenar algo nuevo? 😄")
+        enviar(numero, "❌ Pedido cancelado. ¿Quieres algo más? 😄")
         return "ok"
 
     if intencion == "menu":
@@ -227,7 +249,7 @@ def webhook():
     # HORARIO
     # =========================
     if not dentro_horario():
-        enviar(numero, "⏰ Estamos cerrados.\nAbrimos de martes a domingo de 12 pm a 11 pm 🙏")
+        enviar(numero, "⏰ Estamos cerrados. Abrimos de 12 pm a 11 pm 🙏")
         return "ok"
 
     # =========================
@@ -263,7 +285,7 @@ def webhook():
     # ENTREGA
     # =========================
     if sesion["estado"] == "tipo_entrega":
-        if "domicilio" in texto:
+        if "domicilio" in texto.lower():
             sesion["domicilio"] = True
             enviar(numero, "📍 Envíame tu dirección")
             sesion["estado"] = "direccion"
@@ -287,9 +309,8 @@ def webhook():
     # =========================
     if sesion["estado"] == "nombre":
 
-        # Evita errores tipo "gracias"
-        if any(x in texto for x in ["gracias", "cancelar"]):
-            enviar(numero, "😅 Necesito tu nombre para completar el pedido 🙏")
+        if any(x in texto.lower() for x in ["gracias", "cancelar"]):
+            enviar(numero, "🙏 Necesito tu nombre para confirmar el pedido")
             return "ok"
 
         sesion["nombre"] = texto
