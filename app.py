@@ -1,22 +1,23 @@
-from flask import Flask, request
-import requests
 import os
-import re
-import unicodedata
+import requests
+from flask import Flask, request
+from openai import OpenAI
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import json
+import re
 
 app = Flask(__name__)
 
-# =========================
-# CONFIG
-# =========================
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+# 🔑 CONFIG
+VERIFY_TOKEN = "tu_token"
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# =========================
-# MENÚ
-# =========================
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# 🧾 MENÚ
 MENU = {
     "almeja": 300,
     "ostion": 400,
@@ -28,126 +29,25 @@ MENU = {
     "refresco": 35
 }
 
-# =========================
-# MEMORIA DE USUARIOS
-# =========================
+# 🧠 MEMORIA GLOBAL
 usuarios = {}
 
-# =========================
-# HORARIO (México real)
-# =========================
+def obtener_usuario(numero):
+    if numero not in usuarios:
+        usuarios[numero] = {
+            "pedido": {},
+            "historial": [],
+            "estado": "inicio"
+        }
+    return usuarios[numero]
+
+# 🕒 HORARIO
 def dentro_horario():
     ahora = datetime.now(ZoneInfo("America/Mexico_City"))
-    dia = ahora.weekday()  # 0=lunes
-    hora = ahora.hour
-    return dia >= 1 and dia <= 6 and 11 <= hora < 23
+    return 11 <= ahora.hour < 23
 
-# =========================
-# NORMALIZAR TEXTO
-# =========================
-def limpiar_texto(texto):
-    texto = texto.lower()
-    texto = ''.join(
-        c for c in unicodedata.normalize('NFD', texto)
-        if unicodedata.category(c) != 'Mn'
-    )
-    return texto
-
-# =========================
-# PROCESADOR AVANZADO
-# =========================
-def procesar_pedido(texto, pedido_actual):
-    texto = limpiar_texto(texto)
-    partes = re.split(r'[,\n\.]+', texto)
-
-    resultado = pedido_actual.copy()
-
-    for parte in partes:
-        parte = parte.strip()
-
-        # CAMBIAR
-        cambio = re.search(r'cambia\s*(\d+)\s*([a-z\s]+)\s*por\s*(\d+)', parte)
-        if cambio:
-            _, producto, nueva = cambio.groups()
-            for item in MENU:
-                if item in producto:
-                    resultado[item] = int(nueva)
-
-        # QUITAR
-        quitar = re.search(r'(quita|elimina|borra)\s*(\d+)\s*([a-z\s]+)', parte)
-        if quitar:
-            _, cantidad, producto = quitar.groups()
-            for item in MENU:
-                if item in producto:
-                    resultado[item] = max(0, resultado.get(item, 0) - int(cantidad))
-
-        # AGREGAR
-        agregar = re.search(r'(\d+)\s*(?:orden(?:es)?\s*de\s*)?([a-z\s]+)', parte)
-        if agregar:
-            cantidad, producto = agregar.groups()
-            for item in MENU:
-                if item in producto:
-                    resultado[item] = resultado.get(item, 0) + int(cantidad)
-
-    return resultado
-
-# =========================
-# CALCULAR TOTAL
-# =========================
-def calcular_total(pedido):
-    total = 0
-    detalle = ""
-
-    for item, cantidad in pedido.items():
-        if cantidad > 0:
-            precio = MENU[item]
-            subtotal = precio * cantidad
-            total += subtotal
-            detalle += f"• {cantidad} x {item} = ${subtotal}\n"
-
-    return total, detalle
-
-# =========================
-# DETECTAR INTENCIÓN
-# =========================
-def detectar_intencion(texto):
-    texto = limpiar_texto(texto)
-
-    if any(x in texto for x in ["menu"]):
-        return "menu"
-
-    if any(x in texto for x in ["gracias", "ok", "perfecto"]):
-        return "agradecimiento"
-
-    if any(x in texto for x in ["hola", "oye", "recomiendas"]):
-        return "conversacion"
-
-    if any(x in texto for x in ["modificar", "cambiar", "agrega", "quita", "falto"]):
-        return "pedido"
-
-    return "pedido"
-
-# =========================
-# RESPUESTA CONVERSACIONAL
-# =========================
-def respuesta_ia(texto):
-    texto = limpiar_texto(texto)
-
-    if "recomiendas" in texto:
-        return "🔥 Te recomiendo el aguachile y una michelada, es lo más pedido 😎"
-
-    if "hola" in texto:
-        return "👋 ¡Bienvenido a Mariscos El Alegre! ¿Qué se te antoja hoy? 😋"
-
-    if "gracias" in texto:
-        return "😊 ¡Gracias a ti! Aquí estamos para cuando quieras más mariscos 🦐🍻"
-
-    return "🤔 No entendí del todo, pero puedo ayudarte a ordenar. ¿Qué deseas?"
-
-# =========================
-# ENVIAR MENSAJE
-# =========================
-def enviar(numero, mensaje):
+# 📤 ENVIAR WHATSAPP
+def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -157,151 +57,150 @@ def enviar(numero, mensaje):
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "text",
-        "text": {"body": mensaje}
+        "text": {"body": texto}
     }
     requests.post(url, headers=headers, json=data)
 
-# =========================
-# WEBHOOK
-# =========================
-@app.route("/webhook", methods=["POST"])
+# 🧾 CALCULAR TOTAL
+def calcular_total(pedido):
+    total = 0
+    detalle = ""
+
+    for item, cantidad in pedido.items():
+        precio = MENU.get(item, 0)
+        subtotal = precio * cantidad
+        total += subtotal
+        detalle += f"• {cantidad} x {item} = ${subtotal}\n"
+
+    return total, detalle
+
+# 🤖 GPT RESPUESTA CON MEMORIA
+def responder_gpt(usuario, mensaje):
+    historial = usuario["historial"][-10:]  # últimas 10 interacciones
+
+    mensajes = [
+        {"role": "system", "content": f"""
+Eres un asistente de restaurante llamado "Mariscos El Alegre".
+
+FUNCIONES:
+- Conversar como humano (natural)
+- Tomar pedidos
+- Modificar pedidos
+- Ser amable y vendedor
+
+MENÚ:
+{MENU}
+
+PEDIDO ACTUAL:
+{usuario["pedido"]}
+
+INSTRUCCIONES:
+- Si el cliente pide comida → interpreta
+- Si quiere modificar → actualiza
+- Si habla normal → responde natural
+- Si dice "gracias" → responde humano
+- NO repitas el pedido innecesariamente
+"""}
+    ]
+
+    # Agregar historial
+    for h in historial:
+        mensajes.append(h)
+
+    mensajes.append({"role": "user", "content": mensaje})
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=mensajes
+    )
+
+    respuesta = response.choices[0].message.content
+
+    # Guardar memoria
+    usuario["historial"].append({"role": "user", "content": mensaje})
+    usuario["historial"].append({"role": "assistant", "content": respuesta})
+
+    return respuesta
+
+# 🧠 INTERPRETAR PEDIDO CON GPT
+def interpretar_pedido(texto):
+    prompt = f"""
+Convierte este pedido a JSON:
+
+"{texto}"
+
+Menú:
+{MENU}
+
+Ejemplo salida:
+{{"almeja":2,"cerveza":1}}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    try:
+        return json.loads(response.choices[0].message.content)
+    except:
+        return {}
+
+# 🔄 WEBHOOK
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+
+    if request.method == "GET":
+        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return request.args.get("hub.challenge")
+        return "Error"
+
     data = request.get_json()
 
     try:
         mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
-        texto = mensaje["text"]["body"]
         numero = mensaje["from"]
+        texto = mensaje["text"]["body"].lower()
     except:
         return "ok"
 
-    if numero not in usuarios:
-        usuarios[numero] = {
-            "pedido": {},
-            "estado": "inicio",
-            "nombre": "",
-            "direccion": ""
-        }
+    usuario = obtener_usuario(numero)
 
-    sesion = usuarios[numero]
-
-    # =========================
-    # HORARIO
-    # =========================
+    # 🚫 FUERA DE HORARIO
     if not dentro_horario():
-        enviar(numero, "⏰ Estamos cerrados. Abrimos de martes a domingo de 11 AM a 11 PM 🙏")
+        enviar(numero, "🕒 Estamos cerrados. Abrimos de 11am a 11pm 🙏")
         return "ok"
 
-    intencion = detectar_intencion(texto)
-
-    # =========================
-    # MENÚ
-    # =========================
-    if sesion["estado"] == "inicio":
-        enviar(numero, """👋 Bienvenido a Mariscos El Alegre 😄
-
-🍽 MENÚ:
-* Almeja $300
-* Ostion $400
-* Ceviche $200
-* Ceviche camarón $250
-* Aguachile $260
-
-🥤 Bebidas:
-* Cerveza $40
-* Michelada $100
-* Refresco $35
-
-✍ Escribe tu pedido:
-Ej: "2 almejas y 1 cerveza"
-""")
-        sesion["estado"] = "ordenando"
+    # 👋 PRIMER MENSAJE
+    if usuario["estado"] == "inicio":
+        enviar(numero, "👋 Bienvenido a Mariscos El Alegre 😎\n\n¿Te muestro el menú?")
+        usuario["estado"] = "menu"
         return "ok"
 
-    # =========================
-    # PEDIDO / MODIFICACIÓN
-    # =========================
-    nuevo_pedido = procesar_pedido(texto, sesion["pedido"])
+    # 🧾 INTENTAR INTERPRETAR PEDIDO
+    pedido_detectado = interpretar_pedido(texto)
 
-    if nuevo_pedido != sesion["pedido"]:
-        sesion["pedido"] = nuevo_pedido
+    if pedido_detectado:
+        for k, v in pedido_detectado.items():
+            usuario["pedido"][k] = usuario["pedido"].get(k, 0) + v
 
-        total, detalle = calcular_total(sesion["pedido"])
+        total, detalle = calcular_total(usuario["pedido"])
 
         enviar(numero, f"""🧾 TU PEDIDO:
 
 {detalle}
 
-💰 Total: ${total}""")
+💰 Total: ${total}
 
-        if sesion["estado"] == "ordenando":
-            enviar(numero, "🚚 ¿Es domicilio o recoger?")
-            sesion["estado"] = "tipo_entrega"
+¿Deseas modificar algo o continuamos? 😎""")
 
         return "ok"
 
-    # =========================
-    # ENTREGA
-    # =========================
-    if sesion["estado"] == "tipo_entrega":
-        if "domicilio" in texto.lower():
-            sesion["estado"] = "direccion"
-            enviar(numero, "📍 Envíame tu dirección")
-        else:
-            sesion["estado"] = "nombre"
-            enviar(numero, "🙏 ¿Tu nombre?")
-        return "ok"
-
-    # =========================
-    # DIRECCIÓN
-    # =========================
-    if sesion["estado"] == "direccion":
-        sesion["direccion"] = texto
-        sesion["estado"] = "nombre"
-        enviar(numero, "🙏 ¿Tu nombre?")
-        return "ok"
-
-    # =========================
-    # NOMBRE
-    # =========================
-    if sesion["estado"] == "nombre":
-        sesion["nombre"] = texto
-
-        total, detalle = calcular_total(sesion["pedido"])
-
-        envio = 25 if sesion["direccion"] else 0
-        total += envio
-
-        enviar(numero, f"""🧾 TU PEDIDO FINAL:
-
-{detalle}
-🚚 Envío: ${envio}
-
-💰 TOTAL: ${total}
-
-👤 Nombre: {sesion["nombre"]}
-📍 Dirección: {sesion["direccion"] or "Recoger en sucursal"}
-
-✅ Pedido confirmado 😎""")
-
-        usuarios[numero] = {
-            "pedido": {},
-            "estado": "inicio",
-            "nombre": "",
-            "direccion": ""
-        }
-
-        return "ok"
-
-    # =========================
-    # CONVERSACIÓN
-    # =========================
-    respuesta = respuesta_ia(texto)
+    # 🤖 RESPUESTA GPT
+    respuesta = responder_gpt(usuario, texto)
     enviar(numero, respuesta)
 
     return "ok"
 
-
-@app.route("/", methods=["GET"])
-def home():
-    return "Bot activo 🚀"
+if __name__ == "__main__":
+    app.run(port=5000)
