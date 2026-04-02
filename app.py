@@ -5,7 +5,6 @@ from openai import OpenAI
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
-import re
 
 app = Flask(__name__)
 
@@ -29,7 +28,7 @@ MENU = {
     "refresco": 35
 }
 
-# 🧠 MEMORIA GLOBAL
+# 🧠 MEMORIA
 usuarios = {}
 
 def obtener_usuario(numero):
@@ -46,20 +45,23 @@ def dentro_horario():
     ahora = datetime.now(ZoneInfo("America/Mexico_City"))
     return 11 <= ahora.hour < 23
 
-# 📤 ENVIAR WHATSAPP
+# 📤 ENVIAR MENSAJE
 def enviar(numero, texto):
-    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "text",
-        "text": {"body": texto}
-    }
-    requests.post(url, headers=headers, json=data)
+    try:
+        url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "messaging_product": "whatsapp",
+            "to": numero,
+            "type": "text",
+            "text": {"body": texto}
+        }
+        requests.post(url, headers=headers, json=data)
+    except Exception as e:
+        print("ERROR ENVIANDO:", e)
 
 # 🧾 CALCULAR TOTAL
 def calcular_total(pedido):
@@ -74,57 +76,50 @@ def calcular_total(pedido):
 
     return total, detalle
 
-# 🤖 GPT RESPUESTA CON MEMORIA
+# 🤖 GPT RESPUESTA SEGURA
 def responder_gpt(usuario, mensaje):
-    historial = usuario["historial"][-10:]  # últimas 10 interacciones
+    try:
+        historial = usuario["historial"][-10:]
 
-    mensajes = [
-        {"role": "system", "content": f"""
-Eres un asistente de restaurante llamado "Mariscos El Alegre".
+        mensajes = [
+            {
+                "role": "system",
+                "content": """
+Eres un asistente del restaurante "Mariscos El Alegre".
 
-FUNCIONES:
-- Conversar como humano (natural)
-- Tomar pedidos
-- Modificar pedidos
-- Ser amable y vendedor
+- Habla natural como humano
+- Sé amable y breve
+- Puedes ayudar a pedir comida
+- Responde también a mensajes normales (gracias, hola, etc)
+"""
+            }
+        ]
 
-MENÚ:
-{MENU}
+        for h in historial:
+            mensajes.append(h)
 
-PEDIDO ACTUAL:
-{usuario["pedido"]}
+        mensajes.append({"role": "user", "content": mensaje})
 
-INSTRUCCIONES:
-- Si el cliente pide comida → interpreta
-- Si quiere modificar → actualiza
-- Si habla normal → responde natural
-- Si dice "gracias" → responde humano
-- NO repitas el pedido innecesariamente
-"""}
-    ]
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=mensajes
+        )
 
-    # Agregar historial
-    for h in historial:
-        mensajes.append(h)
+        respuesta = response.choices[0].message.content
 
-    mensajes.append({"role": "user", "content": mensaje})
+        usuario["historial"].append({"role": "user", "content": mensaje})
+        usuario["historial"].append({"role": "assistant", "content": respuesta})
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=mensajes
-    )
+        return respuesta
 
-    respuesta = response.choices[0].message.content
-
-    # Guardar memoria
-    usuario["historial"].append({"role": "user", "content": mensaje})
-    usuario["historial"].append({"role": "assistant", "content": respuesta})
-
-    return respuesta
+    except Exception as e:
+        print("ERROR GPT:", e)
+        return "😅 Ocurrió un error, intenta de nuevo"
 
 # 🧠 INTERPRETAR PEDIDO CON GPT
 def interpretar_pedido(texto):
-    prompt = f"""
+    try:
+        prompt = f"""
 Convierte este pedido a JSON:
 
 "{texto}"
@@ -132,24 +127,28 @@ Convierte este pedido a JSON:
 Menú:
 {MENU}
 
-Ejemplo salida:
+Ejemplo:
 {{"almeja":2,"cerveza":1}}
+
+Solo responde JSON válido.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
-    )
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}]
+        )
 
-    try:
         return json.loads(response.choices[0].message.content)
-    except:
+
+    except Exception as e:
+        print("ERROR INTERPRETAR:", e)
         return {}
 
 # 🔄 WEBHOOK
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
 
+    # 🔐 VERIFICACIÓN META
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
@@ -164,6 +163,8 @@ def webhook():
     except:
         return "ok"
 
+    print("MENSAJE:", texto)
+
     usuario = obtener_usuario(numero)
 
     # 🚫 FUERA DE HORARIO
@@ -171,13 +172,13 @@ def webhook():
         enviar(numero, "🕒 Estamos cerrados. Abrimos de 11am a 11pm 🙏")
         return "ok"
 
-    # 👋 PRIMER MENSAJE
+    # 👋 BIENVENIDA
     if usuario["estado"] == "inicio":
         enviar(numero, "👋 Bienvenido a Mariscos El Alegre 😎\n\n¿Te muestro el menú?")
         usuario["estado"] = "menu"
         return "ok"
 
-    # 🧾 INTENTAR INTERPRETAR PEDIDO
+    # 🧾 DETECTAR PEDIDO
     pedido_detectado = interpretar_pedido(texto)
 
     if pedido_detectado:
@@ -192,15 +193,20 @@ def webhook():
 
 💰 Total: ${total}
 
-¿Deseas modificar algo o continuamos? 😎""")
+¿Deseas modificar algo o continuar? 😎""")
 
         return "ok"
 
-    # 🤖 RESPUESTA GPT
+    # 🤖 RESPUESTA NORMAL
     respuesta = responder_gpt(usuario, texto)
+
+    if not respuesta:
+        respuesta = "😅 No entendí bien, ¿puedes repetirlo?"
+
     enviar(numero, respuesta)
 
     return "ok"
 
+# 🚀 ARRANQUE CORRECTO EN RENDER
 if __name__ == "__main__":
-    app.run(port=5000)
+    app.run(host="0.0.0.0", port=10000)
