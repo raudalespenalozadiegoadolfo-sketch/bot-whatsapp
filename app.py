@@ -7,7 +7,7 @@ from openai import OpenAI
 app = Flask(__name__)
 
 # ===== CONFIG =====
-TOKEN = os.getenv("TOKEN_WHATSAPP")
+TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 ADMIN_PHONE = os.getenv("ADMIN_PHONE")
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
