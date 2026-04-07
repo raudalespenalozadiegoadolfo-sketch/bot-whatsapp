@@ -26,24 +26,32 @@ menu = {
     "refresco": 35
 }
 
-# ===== UTIL =====
+# ===== ENVÍO WHATSAPP =====
 def enviar_mensaje(numero, texto):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
     }
+
     data = {
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "text",
         "text": {"body": texto}
     }
-    requests.post(url, headers=headers, json=data)
+
+    try:
+        resp = requests.post(url, headers=headers, json=data)
+        print("ENVIO:", resp.status_code, resp.text)
+    except Exception as e:
+        print("ERROR ENVIO:", e)
 
 
 def enviar_botones(numero):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
@@ -65,7 +73,11 @@ def enviar_botones(numero):
         }
     }
 
-    requests.post(url, headers=headers, json=data)
+    try:
+        resp = requests.post(url, headers=headers, json=data)
+        print("BOTONES:", resp.status_code, resp.text)
+    except Exception as e:
+        print("ERROR BOTONES:", e)
 
 
 def mostrar_menu():
@@ -76,7 +88,7 @@ def mostrar_menu():
     return texto
 
 
-# ===== NORMALIZAR TEXTO =====
+# ===== NORMALIZACIÓN =====
 def normalizar(texto):
     texto = texto.lower()
 
@@ -124,13 +136,16 @@ Responde SOLO JSON:
         )
 
         contenido = resp.choices[0].message.content.strip()
+        print("IA RAW:", contenido)
+
         return eval(contenido)
 
-    except:
+    except Exception as e:
+        print("ERROR IA:", e)
         return {"accion": "otro", "items": []}
 
 
-# ===== LÓGICA =====
+# ===== LÓGICA PRINCIPAL =====
 def procesar(numero, texto):
 
     print("MENSAJE:", texto)
@@ -143,18 +158,28 @@ def procesar(numero, texto):
         }
 
     user = usuarios[numero]
-    ia = interpretar(texto)
 
-    accion = ia["accion"]
-    items = ia["items"]
+    texto_lower = texto.lower()
 
-    # ===== MENU =====
-    if accion == "menu" or texto in ["menu", "menú", "ver menu"]:
+    # ===== SALUDO DIRECTO =====
+    if texto_lower in ["hola", "hi", "buenas"]:
+        enviar_botones(numero)
+        return
+
+    # ===== MENU DIRECTO =====
+    if texto_lower in ["menu", "menú", "ver menu"]:
         enviar_mensaje(numero, mostrar_menu())
         return
 
+    # ===== IA =====
+    ia = interpretar(texto)
+    accion = ia.get("accion", "otro")
+    items = ia.get("items", [])
+
     # ===== PEDIDO =====
     if accion == "pedido" and items:
+        print("PEDIDO DETECTADO")
+
         for item in items:
             user["pedido"].append(item)
 
@@ -162,7 +187,8 @@ def procesar(numero, texto):
         detalle = "🧾 Tu pedido:\n\n"
 
         for p in user["pedido"]:
-            subtotal = menu[p["producto"]] * p["cantidad"]
+            precio = menu.get(p["producto"], 0)
+            subtotal = precio * p["cantidad"]
             total += subtotal
             detalle += f"{p['cantidad']} x {p['producto']} = ${subtotal}\n"
 
@@ -175,7 +201,7 @@ def procesar(numero, texto):
         return
 
     # ===== CONFIRMAR =====
-    if "confirmar" in texto:
+    if "confirmar" in texto_lower:
         user["estado"] = "nombre"
         enviar_mensaje(numero, "👤 Nombre del pedido:")
         return
@@ -215,11 +241,11 @@ def procesar(numero, texto):
         usuarios[numero] = {"pedido": [], "estado": "inicio", "datos": {}}
         return
 
-    # ===== DEFAULT =====
+    # ===== FALLBACK =====
     enviar_botones(numero)
 
 
-# ===== WEBHOOK (CORREGIDO) =====
+# ===== WEBHOOK =====
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -227,6 +253,7 @@ def webhook():
     try:
         value = data["entry"][0]["changes"][0]["value"]
 
+        # 🔴 IGNORA EVENTOS SIN MENSAJE
         if "messages" not in value:
             return jsonify({"ok": True})
 
@@ -245,7 +272,7 @@ def webhook():
         procesar(numero, texto)
 
     except Exception as e:
-        print("ERROR:", e)
+        print("ERROR WEBHOOK:", e)
 
     return jsonify({"ok": True})
 
