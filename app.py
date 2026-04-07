@@ -8,9 +8,9 @@ app = Flask(__name__)
 # 🔐 CONFIGURACIÓN
 # =========================
 
-VERIFY_TOKEN = "mi_token_verificacion"
-WHATSAPP_TOKEN = "TU_TOKEN_DE_META"
-PHONE_NUMBER_ID = "TU_PHONE_NUMBER_ID"
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 
 # =========================
 # 📤 ENVIAR MENSAJE
