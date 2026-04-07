@@ -4,6 +4,7 @@ from flask import Flask, request
 from openai import OpenAI
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import re
 import json
 
 app = Flask(__name__)
@@ -35,7 +36,6 @@ def obtener_usuario(numero):
     if numero not in usuarios:
         usuarios[numero] = {
             "pedido": {},
-            "historial": [],
             "estado": "inicio"
         }
     return usuarios[numero]
@@ -45,7 +45,7 @@ def dentro_horario():
     ahora = datetime.now(ZoneInfo("America/Mexico_City"))
     return 11 <= ahora.hour < 23
 
-# 📤 ENVIAR MENSAJE
+# 📤 ENVIAR
 def enviar(numero, texto):
     try:
         url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -63,7 +63,7 @@ def enviar(numero, texto):
     except Exception as e:
         print("ERROR ENVIANDO:", e)
 
-# 🧾 CALCULAR TOTAL
+# 🧾 TOTAL
 def calcular_total(pedido):
     total = 0
     detalle = ""
@@ -76,79 +76,50 @@ def calcular_total(pedido):
 
     return total, detalle
 
-# 🤖 GPT RESPUESTA SEGURA
-def responder_gpt(usuario, mensaje):
+# 🛡 PARSER ULTRA (SIN GPT)
+def interpretar_pedido(texto):
+    texto = texto.lower()
+
+    # normalizar
+    texto = texto.replace(",", " ")
+    texto = texto.replace("\n", " ")
+
+    pedido = {}
+
+    for item in MENU.keys():
+        patron = rf"(\d+)\s*(?:orden(?:es)?\s*de\s*)?{item}"
+        matches = re.findall(patron, texto)
+
+        for m in matches:
+            cantidad = int(m)
+            pedido[item] = pedido.get(item, 0) + cantidad
+
+    return pedido
+
+# 🤖 GPT SOLO CONVERSACIÓN (SEGURO)
+def responder_gpt(texto):
     try:
-        historial = usuario["historial"][-10:]
-
-        mensajes = [
-            {
-                "role": "system",
-                "content": """
-Eres un asistente del restaurante "Mariscos El Alegre".
-
-- Habla natural como humano
-- Sé amable y breve
-- Puedes ayudar a pedir comida
-- Responde también a mensajes normales (gracias, hola, etc)
-"""
-            }
-        ]
-
-        for h in historial:
-            mensajes.append(h)
-
-        mensajes.append({"role": "user", "content": mensaje})
-
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=mensajes
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Eres un asistente amable de restaurante mexicano"
+                },
+                {"role": "user", "content": texto}
+            ]
         )
 
-        respuesta = response.choices[0].message.content
-
-        usuario["historial"].append({"role": "user", "content": mensaje})
-        usuario["historial"].append({"role": "assistant", "content": respuesta})
-
-        return respuesta
+        return response.choices[0].message.content
 
     except Exception as e:
         print("ERROR GPT:", e)
-        return "😅 Ocurrió un error, intenta de nuevo"
-
-# 🧠 INTERPRETAR PEDIDO CON GPT
-def interpretar_pedido(texto):
-    try:
-        prompt = f"""
-Convierte este pedido a JSON:
-
-"{texto}"
-
-Menú:
-{MENU}
-
-Ejemplo:
-{{"almeja":2,"cerveza":1}}
-
-Solo responde JSON válido.
-"""
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        return json.loads(response.choices[0].message.content)
-
-    except Exception as e:
-        print("ERROR INTERPRETAR:", e)
-        return {}
+        return "😅 No entendí bien, ¿puedes repetirlo?"
 
 # 🔄 WEBHOOK
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
 
-    # 🔐 VERIFICACIÓN META
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
@@ -167,15 +138,21 @@ def webhook():
 
     usuario = obtener_usuario(numero)
 
-    # 🚫 FUERA DE HORARIO
+    # 🚫 HORARIO
     if not dentro_horario():
         enviar(numero, "🕒 Estamos cerrados. Abrimos de 11am a 11pm 🙏")
         return "ok"
 
-    # 👋 BIENVENIDA
+    # 👋 INICIO
     if usuario["estado"] == "inicio":
-        enviar(numero, "👋 Bienvenido a Mariscos El Alegre 😎\n\n¿Te muestro el menú?")
-        usuario["estado"] = "menu"
+        enviar(numero, "👋 Bienvenido a Mariscos El Alegre 😎\n\nEscribe tu pedido (ej: 2 almejas y 1 cerveza)")
+        usuario["estado"] = "activo"
+        return "ok"
+
+    # 🔁 MODIFICAR PEDIDO
+    if "modificar" in texto or "cambiar" in texto:
+        usuario["pedido"] = {}
+        enviar(numero, "✏️ Listo, dime tu nuevo pedido")
         return "ok"
 
     # 🧾 DETECTAR PEDIDO
@@ -193,20 +170,20 @@ def webhook():
 
 💰 Total: ${total}
 
-¿Deseas modificar algo o continuar? 😎""")
+¿Algo más o confirmamos? 😎""")
 
         return "ok"
 
-    # 🤖 RESPUESTA NORMAL
-    respuesta = responder_gpt(usuario, texto)
+    # 💬 CONVERSACIÓN
+    if any(x in texto for x in ["hola", "gracias", "menu", "qué hay"]):
+        respuesta = responder_gpt(texto)
+        enviar(numero, respuesta)
+        return "ok"
 
-    if not respuesta:
-        respuesta = "😅 No entendí bien, ¿puedes repetirlo?"
-
-    enviar(numero, respuesta)
-
+    # 🛟 FALLBACK
+    enviar(numero, "😅 No entendí bien. Ejemplo: 2 almejas y 1 cerveza")
     return "ok"
 
-# 🚀 ARRANQUE CORRECTO EN RENDER
+# 🚀 RENDER
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
