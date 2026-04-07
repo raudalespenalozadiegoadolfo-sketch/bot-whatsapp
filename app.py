@@ -1,33 +1,19 @@
-from flask import Flask, request, jsonify
-import requests
 import os
-import json
 import re
+import requests
+from flask import Flask, request, jsonify
 from openai import OpenAI
 
 app = Flask(__name__)
 
-# =========================
-# 🔑 CONFIG
-# =========================
+# ===== CONFIG =====
+TOKEN = os.getenv("TOKEN_WHATSAPP")
+PHONE_ID = os.getenv("PHONE_NUMBER_ID")
+ADMIN_PHONE = os.getenv("ADMIN_PHONE")  # Tu número
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
-PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# =========================
-# 🧠 MEMORIA
-# =========================
-
+# ===== BASE DE DATOS EN MEMORIA =====
 usuarios = {}
-estado_usuario = {}
-
-# =========================
-# 🍽️ MENÚ
-# =========================
 
 menu = {
     "almeja": 300,
@@ -40,25 +26,11 @@ menu = {
     "refresco": 35
 }
 
-# =========================
-# 📋 MENU TEXTO
-# =========================
-
-def mostrar_menu():
-    texto = "📋 MENÚ:\n\n"
-    for item, precio in menu.items():
-        texto += f"• {item} - ${precio}\n"
-    texto += "\nEjemplo: 2 almejas y 1 cerveza"
-    return texto
-
-# =========================
-# 📤 ENVIAR
-# =========================
-
-def enviar(numero, texto):
-    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+# ===== UTILIDADES =====
+def enviar_mensaje(numero, texto):
+    url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
     }
     data = {
@@ -69,198 +41,191 @@ def enviar(numero, texto):
     }
     requests.post(url, headers=headers, json=data)
 
-# =========================
-# 🤖 IA (solo intención)
-# =========================
 
-def interpretar(texto):
-    prompt = f"""
-Clasifica la intención del usuario.
+def enviar_botones(numero, texto):
+    url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "Content-Type": "application/json"
+    }
 
-Responde SOLO JSON:
+    data = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": texto},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "menu", "title": "📋 Ver menú"}},
+                    {"type": "reply", "reply": {"id": "pedido", "title": "🛒 Hacer pedido"}}
+                ]
+            }
+        }
+    }
 
-{{"accion":"saludo"}}
-{{"accion":"ver_menu"}}
-{{"accion":"orden"}}
-{{"accion":"cancelar"}}
-{{"accion":"finalizar"}}
-{{"accion":"otro"}}
+    requests.post(url, headers=headers, json=data)
 
-Texto: "{texto}"
-"""
 
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-
-        contenido = res.choices[0].message.content.strip()
-        contenido = contenido.replace("json", "").replace("", "").strip()
-
-        return json.loads(contenido)
-
-    except:
-        return {"accion": "otro"}
-
-# =========================
-# ⚙️ PARSEAR PEDIDO (SIN IA)
-# =========================
-
-def extraer_items(texto):
-    items = []
-    for producto in menu.keys():
-        pattern = rf"(\\d+)\\s*{producto}"
-        match = re.findall(pattern, texto)
-        for m in match:
-            items.append({
-                "producto": producto,
-                "cantidad": int(m)
-            })
-    return items
-
-# =========================
-# 🧾 PEDIDO
-# =========================
-
-def procesar_pedido(numero, items):
-    if numero not in usuarios:
-        usuarios[numero] = {"pedido": {}}
-
-    for item in items:
-        p = item["producto"]
-        c = item["cantidad"]
-
-        usuarios[numero]["pedido"][p] = \
-            usuarios[numero]["pedido"].get(p, 0) + c
-
-def cancelar_item(numero, texto):
-    for producto in menu.keys():
-        if producto in texto:
-            usuarios[numero]["pedido"].pop(producto, None)
-
-def resumen(numero):
-    pedido = usuarios[numero]["pedido"]
-    if not pedido:
-        return "🧾 No tienes pedido aún."
-
-    texto = "🧾 Tu pedido:\n\n"
-    total = 0
-
-    for p, c in pedido.items():
-        sub = menu[p] * c
-        total += sub
-        texto += f"{c} x {p} = ${sub}\n"
-
-    texto += f"\n💰 Total: ${total}"
+def mostrar_menu():
+    texto = "📋 MENÚ:\n\n"
+    for k, v in menu.items():
+        texto += f"• {k} - ${v}\n"
+    texto += "\nEjemplo: 2 almejas y 1 cerveza"
     return texto
 
-# =========================
-# 🌐 WEBHOOK
-# =========================
 
-@app.route("/webhook", methods=["GET", "POST"])
+# ===== IA =====
+def interpretar_con_ia(texto):
+    prompt = f"""
+Eres un sistema que convierte pedidos en JSON.
+
+Menú:
+{menu}
+
+Texto del cliente:
+"{texto}"
+
+Responde SOLO JSON así:
+{{
+  "accion": "pedido | menu | cancelar | confirmar | datos | otro",
+  "items": [{{"producto":"...", "cantidad":1}}]
+}}
+"""
+
+    resp = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    contenido = resp.choices[0].message.content.strip()
+
+    try:
+        return eval(contenido)
+    except:
+        return {"accion": "otro", "items": []}
+
+
+# ===== LÓGICA =====
+def procesar(numero, texto):
+
+    if numero not in usuarios:
+        usuarios[numero] = {
+            "pedido": [],
+            "estado": "inicio",
+            "datos": {}
+        }
+
+    user = usuarios[numero]
+
+    ia = interpretar_con_ia(texto)
+    accion = ia["accion"]
+    items = ia["items"]
+
+    # ===== MENÚ =====
+    if accion == "menu":
+        enviar_mensaje(numero, mostrar_menu())
+        return
+
+    # ===== PEDIDO =====
+    if accion == "pedido" and items:
+        for item in items:
+            user["pedido"].append(item)
+
+        total = 0
+        detalle = "🧾 Tu pedido:\n\n"
+
+        for p in user["pedido"]:
+            precio = menu[p["producto"]]
+            subtotal = precio * p["cantidad"]
+            total += subtotal
+            detalle += f"{p['cantidad']} x {p['producto']} = ${subtotal}\n"
+
+        detalle += f"\n💰 Total: ${total}"
+        detalle += "\n\n¿Deseas agregar algo más o confirmar?"
+
+        user["estado"] = "pedido"
+        enviar_mensaje(numero, detalle)
+        return
+
+    # ===== CONFIRMAR =====
+    if accion == "confirmar":
+        user["estado"] = "datos_nombre"
+        enviar_mensaje(numero, "👤 ¿A nombre de quién es el pedido?")
+        return
+
+    # ===== DATOS =====
+    if user["estado"] == "datos_nombre":
+        user["datos"]["nombre"] = texto
+        user["estado"] = "datos_direccion"
+        enviar_mensaje(numero, "📍 Ingresa tu dirección:")
+        return
+
+    if user["estado"] == "datos_direccion":
+        user["datos"]["direccion"] = texto
+        user["estado"] = "datos_telefono"
+        enviar_mensaje(numero, "📞 Ingresa tu número:")
+        return
+
+    if user["estado"] == "datos_telefono":
+        user["datos"]["telefono"] = texto
+
+        resumen = "🚚 NUEVO PEDIDO\n\n"
+
+        total = 0
+        for p in user["pedido"]:
+            subtotal = menu[p["producto"]] * p["cantidad"]
+            total += subtotal
+            resumen += f"{p['cantidad']} x {p['producto']}\n"
+
+        resumen += f"\n💰 Total: ${total}"
+        resumen += f"\n👤 {user['datos']['nombre']}"
+        resumen += f"\n📍 {user['datos']['direccion']}"
+        resumen += f"\n📞 {user['datos']['telefono']}"
+
+        # Enviar al cliente
+        enviar_mensaje(numero, "✅ Pedido confirmado, en camino 🚀")
+
+        # Enviar al admin (tú)
+        enviar_mensaje(ADMIN_PHONE, resumen)
+
+        # Reset
+        usuarios[numero] = {"pedido": [], "estado": "inicio", "datos": {}}
+        return
+
+    # ===== DEFAULT =====
+    enviar_botones(numero, "👋 Bienvenido a Marisco Alegre 🦐")
+
+
+# ===== WEBHOOK =====
+@app.route("/webhook", methods=["POST"])
 def webhook():
-
-    if request.method == "GET":
-        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return request.args.get("hub.challenge")
-        return "Error", 403
-
-    data = request.json
+    data = request.get_json()
 
     try:
         msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
         numero = msg["from"]
-        texto = msg["text"]["body"].lower()
 
-        print("MSG:", texto)
-
-        # =========================
-        # FLUJOS ESTADO
-        # =========================
-
-        if texto in ["si", "sí"] and estado_usuario.get(numero) == "menu":
-            enviar(numero, mostrar_menu())
-            estado_usuario[numero] = "ordenando"
-            return jsonify({"ok": True})
-
-        if texto in ["no", "ya"] and estado_usuario.get(numero) == "ordenando":
-            estado_usuario[numero] = "nombre"
-            enviar(numero, "🧾 ¿Nombre?")
-            return jsonify({"ok": True})
-
-        if estado_usuario.get(numero) == "nombre":
-            usuarios[numero]["nombre"] = texto
-            estado_usuario[numero] = "direccion"
-            enviar(numero, "📍 Dirección?")
-            return jsonify({"ok": True})
-
-        if estado_usuario.get(numero) == "direccion":
-            usuarios[numero]["direccion"] = texto
-            estado_usuario[numero] = "telefono"
-            enviar(numero, "📞 Teléfono?")
-            return jsonify({"ok": True})
-
-        if estado_usuario.get(numero) == "telefono":
-            usuarios[numero]["telefono"] = texto
-            estado_usuario[numero] = "final"
-
-            enviar(numero, "✅ Pedido confirmado\n\n" + resumen(numero))
-            return jsonify({"ok": True})
-
-        # =========================
-        # IA + LOGICA
-        # =========================
-
-        accion = interpretar(texto)["accion"]
-
-        # SALUDO
-        if accion == "saludo":
-            estado_usuario[numero] = "menu"
-            enviar(numero, "👋 Bienvenido a Marisco Alegre 🦐\n¿Quieres ver el menú?")
-
-        # VER MENU
-        elif accion == "ver_menu":
-            enviar(numero, mostrar_menu())
-            estado_usuario[numero] = "ordenando"
-
-        # ORDEN
-        elif accion == "orden":
-            items = extraer_items(texto)
-
-            if items:
-                procesar_pedido(numero, items)
-                enviar(numero, resumen(numero))
-                enviar(numero, "🤖 ¿Agregar algo más o finalizar?")
-                estado_usuario[numero] = "ordenando"
-            else:
-                enviar(numero, "🤖 No entendí el pedido, intenta como:\n2 almejas y 1 cerveza")
-
-        # CANCELAR
-        elif accion == "cancelar":
-            cancelar_item(numero, texto)
-            enviar(numero, "❌ Producto eliminado")
-            enviar(numero, resumen(numero))
-
-        # FINALIZAR
-        elif accion == "finalizar":
-            estado_usuario[numero] = "nombre"
-            enviar(numero, "🧾 ¿Nombre para el pedido?")
-
+        if msg["type"] == "text":
+            texto = msg["text"]["body"]
+        elif msg["type"] == "interactive":
+            texto = msg["interactive"]["button_reply"]["id"]
         else:
-            enviar(numero, "🤖 Puedes pedirme el menú o hacer un pedido")
+            return jsonify({"ok": True})
 
-    except Exception as e:
-        print("ERROR:", e)
+        procesar(numero, texto)
+
+    except:
+        pass
 
     return jsonify({"ok": True})
 
 
-# =========================
-# RUN
-# =========================
+@app.route("/")
+def home():
+    return "Bot corriendo 🔥"
+
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(port=5000)
