@@ -1,12 +1,13 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import json
 from openai import OpenAI
 
 app = Flask(__name__)
 
 # ==============================
-# 🔐 VARIABLES
+# 🔐 VARIABLES DE ENTORNO
 # ==============================
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
@@ -28,6 +29,9 @@ MENU = {
     "refresco": 35
 }
 
+# ==============================
+# 🧠 MEMORIA
+# ==============================
 usuarios = {}
 
 # ==============================
@@ -35,7 +39,7 @@ usuarios = {}
 # ==============================
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-    
+
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
@@ -51,7 +55,7 @@ def enviar(numero, texto):
     requests.post(url, headers=headers, json=data)
 
 # ==============================
-# 📋 MENÚ
+# 📋 MOSTRAR MENÚ
 # ==============================
 def mostrar_menu():
     texto = "📋 MENÚ:\n\n"
@@ -61,27 +65,42 @@ def mostrar_menu():
     return texto
 
 # ==============================
-# 🧾 RESUMEN
+# 🧾 RESUMEN PEDIDO
 # ==============================
 def generar_resumen(numero):
     pedido = usuarios.get(numero, {})
-    
+
     if not pedido:
         return "🧾 No tienes pedido aún."
-    
+
     texto = "🧾 Tu pedido:\n\n"
     total = 0
-    
+
     for producto, cantidad in pedido.items():
         subtotal = MENU[producto] * cantidad
         total += subtotal
         texto += f"{cantidad} x {producto} = ${subtotal}\n"
-    
+
     texto += f"\n💰 Total: ${total}"
     return texto
 
 # ==============================
-# 🧠 IA MODERNA
+# ❌ CANCELAR PRODUCTOS
+# ==============================
+def cancelar_pedido(numero, items):
+    if numero not in usuarios or not usuarios[numero]:
+        return "🧾 No tienes pedido aún."
+
+    for item in items:
+        producto = item["producto"].lower()
+
+        if producto in usuarios[numero]:
+            del usuarios[numero][producto]
+
+    return generar_resumen(numero)
+
+# ==============================
+# 🧠 IA (JSON SEGURO)
 # ==============================
 def interpretar_mensaje(texto):
     prompt = f"""
@@ -90,10 +109,17 @@ Eres un asistente de restaurante.
 Menú:
 {MENU}
 
-Responde SOLO en JSON:
+Acciones posibles:
+- ordenar
+- ver
+- saludo
+- cancelar
+- otro
+
+Responde SOLO en JSON válido:
 
 {{
-"accion": "ordenar/ver/saludo/otro",
+"accion": "...",
 "items": [{{"producto": "...", "cantidad": numero}}]
 }}
 
@@ -103,22 +129,20 @@ Mensaje: "{texto}"
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role": "user", "content": prompt}]
         )
 
-        contenido = response.choices[0].message.content
+        contenido = response.choices[0].message.content.strip()
         print("IA:", contenido)
 
-        return eval(contenido)
+        return json.loads(contenido)
 
     except Exception as e:
         print("ERROR IA:", e)
         return {"accion": "otro", "items": []}
 
 # ==============================
-# 🧠 PEDIDOS
+# 🧠 PROCESAR PEDIDO
 # ==============================
 def procesar_pedido(numero, items):
     if numero not in usuarios:
@@ -156,11 +180,14 @@ def webhook():
             print("MENSAJE:", texto)
 
             ia = interpretar_mensaje(texto)
-            accion = ia["accion"]
-            items = ia["items"]
+            accion = ia.get("accion", "otro")
+            items = ia.get("items", [])
 
+            # ==========================
+            # 🤖 LÓGICA INTELIGENTE
+            # ==========================
             if accion == "saludo":
-                enviar(numero, "👋 ¡Hola! ¿Quieres ver el menú?")
+                enviar(numero, "👋 ¡Hola! Bienvenido a Marisco Alegre 🦐\n¿Quieres ver el menú?")
 
             elif accion == "ver":
                 if numero in usuarios and usuarios[numero]:
@@ -171,6 +198,10 @@ def webhook():
             elif accion == "ordenar":
                 procesar_pedido(numero, items)
                 enviar(numero, generar_resumen(numero))
+
+            elif accion == "cancelar":
+                respuesta = cancelar_pedido(numero, items)
+                enviar(numero, respuesta)
 
             else:
                 enviar(numero, "🤖 Puedes pedirme el menú o hacer un pedido.")
