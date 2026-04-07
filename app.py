@@ -1,12 +1,14 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import json
+import re
 from openai import OpenAI
 
 app = Flask(__name__)
 
 # =========================
-# 🔑 CONFIGURACIÓN
+# 🔑 CONFIG
 # =========================
 
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
@@ -38,6 +40,10 @@ menu = {
     "refresco": 35
 }
 
+# =========================
+# 📋 MENU TEXTO
+# =========================
+
 def mostrar_menu():
     texto = "📋 MENÚ:\n\n"
     for item, precio in menu.items():
@@ -46,7 +52,7 @@ def mostrar_menu():
     return texto
 
 # =========================
-# 📤 ENVIAR MENSAJE
+# 📤 ENVIAR
 # =========================
 
 def enviar(numero, texto):
@@ -64,56 +70,55 @@ def enviar(numero, texto):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# 🤖 IA INTERPRETACIÓN
+# 🤖 IA (solo intención)
 # =========================
 
 def interpretar(texto):
     prompt = f"""
-Eres un asistente de pedidos.
+Clasifica la intención del usuario.
 
-MENÚ:
-almeja 300
-ostion 400
-ceviche 200
-ceviche camaron 250
-aguachile 260
-cerveza 40
-michelada 100
-refresco 35
+Responde SOLO JSON:
 
-Responde SOLO en JSON:
-
-1. Ver menú:
-{{"accion":"ver"}}
-
-2. Pedido:
-{{"accion":"ordenar","items":[{{"producto":"almeja","cantidad":2}}]}}
-
-3. Saludo:
 {{"accion":"saludo"}}
-
-4. Cancelar producto:
-{{"accion":"cancelar","items":[{{"producto":"michelada"}}]}}
-
-5. Otro:
+{{"accion":"ver_menu"}}
+{{"accion":"orden"}}
+{{"accion":"cancelar"}}
+{{"accion":"finalizar"}}
 {{"accion":"otro"}}
 
 Texto: "{texto}"
 """
 
     try:
-        response = client.chat.completions.create(
+        res = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
 
-        contenido = response.choices[0].message.content.strip()
-        return eval(contenido)
+        contenido = res.choices[0].message.content.strip()
+        contenido = contenido.replace("json", "").replace("", "").strip()
 
-    except Exception as e:
-        print("ERROR IA:", e)
+        return json.loads(contenido)
+
+    except:
         return {"accion": "otro"}
+
+# =========================
+# ⚙️ PARSEAR PEDIDO (SIN IA)
+# =========================
+
+def extraer_items(texto):
+    items = []
+    for producto in menu.keys():
+        pattern = rf"(\\d+)\\s*{producto}"
+        match = re.findall(pattern, texto)
+        for m in match:
+            items.append({
+                "producto": producto,
+                "cantidad": int(m)
+            })
+    return items
 
 # =========================
 # 🧾 PEDIDO
@@ -124,31 +129,29 @@ def procesar_pedido(numero, items):
         usuarios[numero] = {"pedido": {}}
 
     for item in items:
-        producto = item["producto"]
-        cantidad = item["cantidad"]
+        p = item["producto"]
+        c = item["cantidad"]
 
-        if producto in menu:
-            usuarios[numero]["pedido"][producto] = \
-                usuarios[numero]["pedido"].get(producto, 0) + cantidad
+        usuarios[numero]["pedido"][p] = \
+            usuarios[numero]["pedido"].get(p, 0) + c
 
-def cancelar_items(numero, items):
-    if numero not in usuarios:
-        return
+def cancelar_item(numero, texto):
+    for producto in menu.keys():
+        if producto in texto:
+            usuarios[numero]["pedido"].pop(producto, None)
 
-    for item in items:
-        producto = item["producto"]
-        if producto in usuarios[numero]["pedido"]:
-            del usuarios[numero]["pedido"][producto]
-
-def generar_resumen(numero):
+def resumen(numero):
     pedido = usuarios[numero]["pedido"]
+    if not pedido:
+        return "🧾 No tienes pedido aún."
+
     texto = "🧾 Tu pedido:\n\n"
     total = 0
 
-    for producto, cantidad in pedido.items():
-        subtotal = menu[producto] * cantidad
-        total += subtotal
-        texto += f"{cantidad} x {producto} = ${subtotal}\n"
+    for p, c in pedido.items():
+        sub = menu[p] * c
+        total += sub
+        texto += f"{c} x {p} = ${sub}\n"
 
     texto += f"\n💰 Total: ${total}"
     return texto
@@ -159,102 +162,104 @@ def generar_resumen(numero):
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
-    if request.method == "GET":
-        token = request.args.get("hub.verify_token")
-        challenge = request.args.get("hub.challenge")
 
-        if token == VERIFY_TOKEN:
-            return challenge
+    if request.method == "GET":
+        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return request.args.get("hub.challenge")
         return "Error", 403
 
     data = request.json
 
     try:
-        mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
-        numero = mensaje["from"]
-        texto = mensaje["text"]["body"].lower()
+        msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        numero = msg["from"]
+        texto = msg["text"]["body"].lower()
 
-        print("MENSAJE:", texto)
+        print("MSG:", texto)
 
         # =========================
-        # 🧠 FLUJOS POR ESTADO
+        # FLUJOS ESTADO
         # =========================
 
-        if texto in ["si", "sí"]:
-            if estado_usuario.get(numero) == "esperando_menu":
-                enviar(numero, mostrar_menu())
-                estado_usuario[numero] = "ordenando"
-                return jsonify({"status": "ok"})
+        if texto in ["si", "sí"] and estado_usuario.get(numero) == "menu":
+            enviar(numero, mostrar_menu())
+            estado_usuario[numero] = "ordenando"
+            return jsonify({"ok": True})
 
-        if texto in ["no", "ya", "nada"]:
-            if estado_usuario.get(numero) == "ordenando":
-                estado_usuario[numero] = "pidiendo_nombre"
-                enviar(numero, "🧾 ¿Cuál es tu nombre?")
-                return jsonify({"status": "ok"})
+        if texto in ["no", "ya"] and estado_usuario.get(numero) == "ordenando":
+            estado_usuario[numero] = "nombre"
+            enviar(numero, "🧾 ¿Nombre?")
+            return jsonify({"ok": True})
 
-        if estado_usuario.get(numero) == "pidiendo_nombre":
+        if estado_usuario.get(numero) == "nombre":
             usuarios[numero]["nombre"] = texto
-            estado_usuario[numero] = "pidiendo_direccion"
-            enviar(numero, "📍 ¿Cuál es tu dirección?")
-            return jsonify({"status": "ok"})
+            estado_usuario[numero] = "direccion"
+            enviar(numero, "📍 Dirección?")
+            return jsonify({"ok": True})
 
-        if estado_usuario.get(numero) == "pidiendo_direccion":
+        if estado_usuario.get(numero) == "direccion":
             usuarios[numero]["direccion"] = texto
-            estado_usuario[numero] = "pidiendo_telefono"
-            enviar(numero, "📞 ¿Tu número de teléfono?")
-            return jsonify({"status": "ok"})
+            estado_usuario[numero] = "telefono"
+            enviar(numero, "📞 Teléfono?")
+            return jsonify({"ok": True})
 
-        if estado_usuario.get(numero) == "pidiendo_telefono":
+        if estado_usuario.get(numero) == "telefono":
             usuarios[numero]["telefono"] = texto
-            estado_usuario[numero] = "finalizado"
+            estado_usuario[numero] = "final"
 
-            resumen = generar_resumen(numero)
-
-            enviar(numero, f"✅ Pedido confirmado\n\n{resumen}\n\n🚚 En camino")
-            return jsonify({"status": "ok"})
+            enviar(numero, "✅ Pedido confirmado\n\n" + resumen(numero))
+            return jsonify({"ok": True})
 
         # =========================
-        # 🤖 IA
+        # IA + LOGICA
         # =========================
 
-        respuesta = interpretar(texto)
-        accion = respuesta.get("accion")
+        accion = interpretar(texto)["accion"]
 
+        # SALUDO
         if accion == "saludo":
-            estado_usuario[numero] = "esperando_menu"
-            enviar(numero, "👋 ¡Hola! Bienvenido a Marisco Alegre 🦐\n¿Quieres ver el menú?")
+            estado_usuario[numero] = "menu"
+            enviar(numero, "👋 Bienvenido a Marisco Alegre 🦐\n¿Quieres ver el menú?")
 
-        elif accion == "ver":
+        # VER MENU
+        elif accion == "ver_menu":
             enviar(numero, mostrar_menu())
             estado_usuario[numero] = "ordenando"
 
-        elif accion == "ordenar":
-            items = respuesta.get("items", [])
-            procesar_pedido(numero, items)
+        # ORDEN
+        elif accion == "orden":
+            items = extraer_items(texto)
 
-            enviar(numero, generar_resumen(numero))
-            enviar(numero, "🤖 ¿Quieres agregar algo más o modificar tu pedido?")
+            if items:
+                procesar_pedido(numero, items)
+                enviar(numero, resumen(numero))
+                enviar(numero, "🤖 ¿Agregar algo más o finalizar?")
+                estado_usuario[numero] = "ordenando"
+            else:
+                enviar(numero, "🤖 No entendí el pedido, intenta como:\n2 almejas y 1 cerveza")
 
-            estado_usuario[numero] = "ordenando"
-
+        # CANCELAR
         elif accion == "cancelar":
-            items = respuesta.get("items", [])
-            cancelar_items(numero, items)
-
+            cancelar_item(numero, texto)
             enviar(numero, "❌ Producto eliminado")
-            enviar(numero, generar_resumen(numero))
+            enviar(numero, resumen(numero))
+
+        # FINALIZAR
+        elif accion == "finalizar":
+            estado_usuario[numero] = "nombre"
+            enviar(numero, "🧾 ¿Nombre para el pedido?")
 
         else:
-            enviar(numero, "🤖 Puedes pedirme el menú o hacer un pedido.")
+            enviar(numero, "🤖 Puedes pedirme el menú o hacer un pedido")
 
     except Exception as e:
         print("ERROR:", e)
 
-    return jsonify({"status": "ok"})
+    return jsonify({"ok": True})
 
 
 # =========================
-# 🚀 INICIAR
+# RUN
 # =========================
 
 if __name__ == "__main__":
