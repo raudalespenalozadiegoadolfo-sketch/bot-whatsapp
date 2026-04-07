@@ -1,7 +1,7 @@
 from flask import Flask, request
 import requests
 import os
-import re
+import json
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -17,7 +17,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ========================
-# MEMORIA SIMPLE (SaaS base)
+# MEMORIA
 # ========================
 usuarios = {}
 
@@ -36,68 +36,52 @@ MENU = {
 }
 
 # ========================
-# LIMPIAR TEXTO
+# IA INTERPRETACIÓN
 # ========================
-def limpiar(texto):
-    texto = texto.lower()
-    texto = texto.replace(",", " y ")
-    texto = texto.replace("ó", "o")
-    texto = texto.replace("á", "a")
-    texto = texto.replace("é", "e")
-    texto = texto.replace("í", "i")
-    texto = texto.replace("ú", "u")
-    return texto
+def interpretar_con_ia(texto, historial):
 
-# ========================
-# PROCESAR PEDIDO
-# ========================
-def procesar_pedido(texto, numero):
-    texto = limpiar(texto)
-    patron = r"(\d+)\s+([a-z\s]+)"
-    coincidencias = re.findall(patron, texto)
+    prompt = f"""
+Eres un sistema que convierte mensajes de clientes en acciones JSON.
 
-    if numero not in usuarios:
-        usuarios[numero] = {}
+MENÚ:
+{MENU}
 
-    for cantidad, producto in coincidencias:
-        producto = producto.strip()
+Historial actual del pedido:
+{historial}
 
-        if producto.endswith("s"):
-            producto = producto[:-1]
+Mensaje del cliente:
+"{texto}"
 
-        if producto in MENU:
-            usuarios[numero][producto] = usuarios[numero].get(producto, 0) + int(cantidad)
+Responde SOLO en JSON con este formato:
 
-    return generar_resumen(numero)
+{{
+ "accion": "agregar | quitar | ver | saludo | otro",
+ "items": [
+    {{"producto": "almeja", "cantidad": 2}}
+ ]
+}}
+"""
 
-# ========================
-# MODIFICAR PEDIDO
-# ========================
-def modificar_pedido(texto, numero):
-    texto = limpiar(texto)
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
 
-    if numero not in usuarios:
-        return "No tienes pedido aún."
+    contenido = response.choices[0].message.content
 
-    if "quita" in texto or "elimina" in texto:
-        for producto in MENU:
-            if producto in texto:
-                usuarios[numero].pop(producto, None)
-                return f"❌ Quité {producto} de tu pedido."
-
-    if "agrega" in texto:
-        return procesar_pedido(texto, numero)
-
-    return None
+    try:
+        return json.loads(contenido)
+    except:
+        return {"accion": "otro", "items": []}
 
 # ========================
-# RESUMEN
+# GENERAR RESPUESTA
 # ========================
 def generar_resumen(numero):
     pedido = usuarios.get(numero, {})
 
     if not pedido:
-        return "No tienes pedido aún."
+        return "🧾 No tienes pedido aún."
 
     total = 0
     texto = "🧾 TU PEDIDO:\n\n"
@@ -106,7 +90,6 @@ def generar_resumen(numero):
         precio = MENU[producto]
         subtotal = precio * cantidad
         total += subtotal
-
         texto += f"{cantidad} x {producto} = ${subtotal}\n"
 
     texto += f"\n💰 TOTAL: ${total}"
@@ -114,23 +97,7 @@ def generar_resumen(numero):
     return texto
 
 # ========================
-# CHAT GPT
-# ========================
-def responder_ia(mensaje):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "Eres un mesero amable de mariscos en México. Responde corto, claro y amigable."},
-                {"role": "user", "content": mensaje}
-            ]
-        )
-        return response.choices[0].message.content
-    except:
-        return "🤖 Ocurrió un error con la IA."
-
-# ========================
-# ENVIAR WHATSAPP
+# ENVIAR MENSAJE
 # ========================
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -163,32 +130,69 @@ def webhook():
     data = request.get_json()
 
     try:
-        mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        value = data["entry"][0]["changes"][0]["value"]
+
+        if "messages" not in value:
+            return "ok", 200
+
+        mensaje = value["messages"][0]
         numero = mensaje["from"]
         texto = mensaje["text"]["body"]
 
         print("MENSAJE:", texto)
 
-        # MENÚ
-        if "menu" in texto.lower():
-            enviar(numero, "📋 Escribe tu pedido\nEj: 2 almejas y 1 cerveza")
-            return "ok", 200
+        if numero not in usuarios:
+            usuarios[numero] = {}
 
-        # MODIFICAR
-        mod = modificar_pedido(texto, numero)
-        if mod:
-            enviar(numero, mod)
-            return "ok", 200
+        # ========================
+        # IA DECIDE
+        # ========================
+        decision = interpretar_con_ia(texto, usuarios[numero])
 
-        # PEDIDO
-        pedido = procesar_pedido(texto, numero)
-        if pedido:
-            enviar(numero, pedido)
-            return "ok", 200
+        print("IA:", decision)
 
-        # IA
-        respuesta = responder_ia(texto)
-        enviar(numero, respuesta)
+        accion = decision.get("accion")
+        items = decision.get("items", [])
+
+        # ========================
+        # ACCIONES
+        # ========================
+
+        if accion == "agregar":
+            for item in items:
+                prod = item["producto"]
+                cant = item["cantidad"]
+
+                if prod in MENU:
+                    usuarios[numero][prod] = usuarios[numero].get(prod, 0) + cant
+
+            enviar(numero, generar_resumen(numero))
+
+        elif accion == "quitar":
+            for item in items:
+                prod = item["producto"]
+
+                if prod in usuarios[numero]:
+                    usuarios[numero].pop(prod)
+
+            enviar(numero, "❌ Producto eliminado\n\n" + generar_resumen(numero))
+
+        elif accion == "ver":
+            enviar(numero, generar_resumen(numero))
+
+        elif accion == "saludo":
+            enviar(numero, "👋 ¡Hola! Puedes pedirme mariscos 😎")
+
+        else:
+            # RESPUESTA NATURAL IA
+            respuesta = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": "Eres un mesero mexicano amigable."},
+                    {"role": "user", "content": texto}
+                ]
+            )
+            enviar(numero, respuesta.choices[0].message.content)
 
     except Exception as e:
         print("ERROR:", e)
