@@ -1,29 +1,23 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import requests
 import os
-import json
-from openai import OpenAI
+import openai
 
 app = Flask(__name__)
 
-# ========================
-# CONFIG
-# ========================
+# ==============================
+# 🔐 VARIABLES DE ENTORNO
+# ==============================
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+openai.api_key = OPENAI_API_KEY
 
-# ========================
-# MEMORIA
-# ========================
-usuarios = {}
-
-# ========================
-# MENÚ
-# ========================
+# ==============================
+# 📋 MENÚ
+# ==============================
 MENU = {
     "almeja": 300,
     "ostion": 400,
@@ -35,73 +29,17 @@ MENU = {
     "refresco": 35
 }
 
-# ========================
-# IA INTERPRETACIÓN
-# ========================
-def interpretar_con_ia(texto, historial):
+# ==============================
+# 🧠 MEMORIA DE USUARIOS
+# ==============================
+usuarios = {}
 
-    prompt = f"""
-Eres un sistema que convierte mensajes de clientes en acciones JSON.
-
-MENÚ:
-{MENU}
-
-Historial actual del pedido:
-{historial}
-
-Mensaje del cliente:
-"{texto}"
-
-Responde SOLO en JSON con este formato:
-
-{{
- "accion": "agregar | quitar | ver | saludo | otro",
- "items": [
-    {{"producto": "almeja", "cantidad": 2}}
- ]
-}}
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    contenido = response.choices[0].message.content
-
-    try:
-        return json.loads(contenido)
-    except:
-        return {"accion": "otro", "items": []}
-
-# ========================
-# GENERAR RESPUESTA
-# ========================
-def generar_resumen(numero):
-    pedido = usuarios.get(numero, {})
-
-    if not pedido:
-        return "🧾 No tienes pedido aún."
-
-    total = 0
-    texto = "🧾 TU PEDIDO:\n\n"
-
-    for producto, cantidad in pedido.items():
-        precio = MENU[producto]
-        subtotal = precio * cantidad
-        total += subtotal
-        texto += f"{cantidad} x {producto} = ${subtotal}\n"
-
-    texto += f"\n💰 TOTAL: ${total}"
-
-    return texto
-
-# ========================
-# ENVIAR MENSAJE
-# ========================
+# ==============================
+# 📤 ENVIAR MENSAJE
+# ==============================
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-
+    
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
@@ -114,93 +52,140 @@ def enviar(numero, texto):
         "text": {"body": texto}
     }
 
-    requests.post(url, headers=headers, json=data)
+    response = requests.post(url, headers=headers, json=data)
+    print("RESPUESTA WHATSAPP:", response.text)
 
-# ========================
-# WEBHOOK
-# ========================
-@app.route("/webhook", methods=["GET", "POST"])
-def webhook():
+# ==============================
+# 📋 MOSTRAR MENÚ
+# ==============================
+def mostrar_menu():
+    texto = "📋 MENÚ:\n\n"
+    for producto, precio in MENU.items():
+        texto += f"• {producto} - ${precio}\n"
+    texto += "\nEjemplo: 2 almejas y 1 cerveza"
+    return texto
 
-    if request.method == "GET":
-        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return request.args.get("hub.challenge")
-        return "Error", 403
+# ==============================
+# 🧾 RESUMEN PEDIDO
+# ==============================
+def generar_resumen(numero):
+    pedido = usuarios.get(numero, {})
+    
+    if not pedido:
+        return "🧾 No tienes pedido aún."
+    
+    texto = "🧾 Tu pedido:\n\n"
+    total = 0
+    
+    for producto, cantidad in pedido.items():
+        precio = MENU[producto]
+        subtotal = precio * cantidad
+        total += subtotal
+        texto += f"{cantidad} x {producto} = ${subtotal}\n"
+    
+    texto += f"\n💰 Total: ${total}"
+    return texto
 
-    data = request.get_json()
+# ==============================
+# 🧠 IA (INTERPRETAR MENSAJE)
+# ==============================
+def interpretar_mensaje(texto):
+    prompt = f"""
+Eres un asistente de restaurante.
+
+Menú:
+{MENU}
+
+Extrae la intención del cliente.
+
+Responde SOLO en JSON con este formato:
+{{
+"accion": "ordenar/ver/saludo/otro",
+"items": [{{"producto": "...", "cantidad": numero}}]
+}}
+
+Mensaje: "{texto}"
+"""
 
     try:
-        value = data["entry"][0]["changes"][0]["value"]
+        respuesta = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}]
+        )
 
-        if "messages" not in value:
-            return "ok", 200
+        contenido = respuesta.choices[0].message.content
+        print("IA:", contenido)
+        return eval(contenido)
 
-        mensaje = value["messages"][0]
-        numero = mensaje["from"]
-        texto = mensaje["text"]["body"]
+    except Exception as e:
+        print("ERROR IA:", e)
+        return {"accion": "otro", "items": []}
 
-        print("MENSAJE:", texto)
+# ==============================
+# 🧠 PROCESAR PEDIDO
+# ==============================
+def procesar_pedido(numero, items):
+    if numero not in usuarios:
+        usuarios[numero] = {}
 
-        if numero not in usuarios:
-            usuarios[numero] = {}
+    for item in items:
+        producto = item["producto"].lower()
+        cantidad = item["cantidad"]
 
-        # ========================
-        # IA DECIDE
-        # ========================
-        decision = interpretar_con_ia(texto, usuarios[numero])
+        if producto in MENU:
+            usuarios[numero][producto] = usuarios[numero].get(producto, 0) + cantidad
 
-        print("IA:", decision)
+# ==============================
+# 🔗 WEBHOOK
+# ==============================
+@app.route("/webhook", methods=["GET"])
+def verify():
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
 
-        accion = decision.get("accion")
-        items = decision.get("items", [])
+    if token == VERIFY_TOKEN:
+        return challenge
+    return "Error de verificación"
 
-        # ========================
-        # ACCIONES
-        # ========================
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    print("DATA RECIBIDA:", data)
 
-        if accion == "agregar":
-            for item in items:
-                prod = item["producto"]
-                cant = item["cantidad"]
+    try:
+        entry = data["entry"][0]["changes"][0]["value"]
 
-                if prod in MENU:
-                    usuarios[numero][prod] = usuarios[numero].get(prod, 0) + cant
+        if "messages" in entry:
+            mensaje = entry["messages"][0]
+            numero = mensaje["from"]
+            texto = mensaje["text"]["body"]
 
-            enviar(numero, generar_resumen(numero))
+            print("MENSAJE:", texto)
 
-        elif accion == "quitar":
-            for item in items:
-                prod = item["producto"]
+            ia = interpretar_mensaje(texto)
+            accion = ia["accion"]
+            items = ia["items"]
 
-                if prod in usuarios[numero]:
-                    usuarios[numero].pop(prod)
+            # ==========================
+            # 🔥 LÓGICA INTELIGENTE
+            # ==========================
+            if accion == "saludo":
+                enviar(numero, "👋 ¡Hola! Bienvenido a Marisco Alegre 🦐\n¿Quieres ver el menú?")
 
-            enviar(numero, "❌ Producto eliminado\n\n" + generar_resumen(numero))
+            elif accion == "ver":
+                if numero in usuarios and usuarios[numero]:
+                    enviar(numero, generar_resumen(numero))
+                else:
+                    enviar(numero, mostrar_menu())
 
-        elif accion == "ver":
-            enviar(numero, generar_resumen(numero))
+            elif accion == "ordenar":
+                procesar_pedido(numero, items)
+                enviar(numero, generar_resumen(numero))
 
-        elif accion == "saludo":
-            enviar(numero, "👋 ¡Hola! Puedes pedirme mariscos 😎")
-
-        else:
-            # RESPUESTA NATURAL IA
-            respuesta = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[
-                    {"role": "system", "content": "Eres un mesero mexicano amigable."},
-                    {"role": "user", "content": texto}
-                ]
-            )
-            enviar(numero, respuesta.choices[0].message.content)
+            else:
+                enviar(numero, "🤖 No entendí bien.\nPuedes pedirme el menú o hacer un pedido.")
 
     except Exception as e:
         print("ERROR:", e)
 
-    return "ok", 200
-
-# ========================
-# RUN
-# ========================
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    return jsonify({"status": "ok"})
