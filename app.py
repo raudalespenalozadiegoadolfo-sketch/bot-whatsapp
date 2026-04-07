@@ -9,7 +9,7 @@ app = Flask(__name__)
 # ===== CONFIG =====
 TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
-ADMIN_PHONE = os.getenv("ADMIN_PHONE")
+ADMIN_PHONE = os.getenv("ADMIN_NUMERO")
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ===== MEMORIA =====
