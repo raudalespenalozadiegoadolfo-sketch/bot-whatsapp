@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 app = Flask(__name__)
 
@@ -11,8 +11,8 @@ VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 
 # ===== DATA =====
 carritos = {}
-estado_usuario = {}
-datos_usuario = {}
+estado = {}
+datos = {}
 
 menu = {
     "camarones": {
@@ -88,6 +88,40 @@ def botones(numero, texto, opciones):
     requests.post(url, headers=headers, json=data)
 
 
+def lista(numero, texto, opciones):
+    url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": texto},
+            "action": {
+                "button": "Ver opciones",
+                "sections": [
+                    {
+                        "title": "Menú",
+                        "rows": [
+                            {
+                                "id": op[0],
+                                "title": op[1]
+                            } for op in opciones
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+
+    requests.post(url, headers=headers, json=data)
+
+
 def resumen(numero):
     carrito = carritos.get(numero, [])
     if not carrito:
@@ -134,43 +168,42 @@ def recibir():
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
         else:
-            texto = mensaje["interactive"]["button_reply"]["id"]
+            texto = mensaje["interactive"]["list_reply"]["id"] if "list_reply" in mensaje["interactive"] else mensaje["interactive"]["button_reply"]["id"]
 
     except:
         return "ok", 200
 
-    # ===== FLUJO DATOS CLIENTE =====
+    # ===== FLUJO DATOS =====
 
-    if estado_usuario.get(numero) == "nombre":
-        datos_usuario[numero] = {"nombre": texto}
-        estado_usuario[numero] = "direccion"
+    if estado.get(numero) == "nombre":
+        datos[numero] = {"nombre": texto}
+        estado[numero] = "direccion"
         enviar(numero, "📍 Escribe tu dirección:")
         return "ok", 200
 
-    elif estado_usuario.get(numero) == "direccion":
-        datos_usuario[numero]["direccion"] = texto
-        estado_usuario[numero] = "telefono"
+    elif estado.get(numero) == "direccion":
+        datos[numero]["direccion"] = texto
+        estado[numero] = "telefono"
         enviar(numero, "📞 Escribe tu teléfono:")
         return "ok", 200
 
-    elif estado_usuario.get(numero) == "telefono":
-        datos_usuario[numero]["telefono"] = texto
-        estado_usuario[numero] = None
+    elif estado.get(numero) == "telefono":
+        datos[numero]["telefono"] = texto
+        estado[numero] = None
 
         enviar(numero, "📦 Pedido confirmado:")
         enviar(numero, resumen(numero))
 
         enviar(numero,
-               f"👤 {datos_usuario[numero]['nombre']}\n"
-               f"📍 {datos_usuario[numero]['direccion']}\n"
-               f"📞 {datos_usuario[numero]['telefono']}"
-        )
+               f"👤 {datos[numero]['nombre']}\n"
+               f"📍 {datos[numero]['direccion']}\n"
+               f"📞 {datos[numero]['telefono']}")
 
         enviar(numero, "🙏 Gracias por su preferencia")
         carritos[numero] = []
         return "ok", 200
 
-    # ===== MENÚ PRINCIPAL =====
+    # ===== MENÚ PRINCIPAL (BOTONES) =====
 
     if texto in ["hola", "menu", "menú"]:
         botones(numero, "👋 Bienvenido a Marisco Alegre 🦐", [
@@ -179,26 +212,32 @@ def recibir():
             ("pedido", "🧾 Ver pedido")
         ])
 
+    # ===== SUBMENÚS (LISTAS) =====
+
     elif texto == "comida":
-        botones(numero, "🍽 Selecciona:", [
+        lista(numero, "🍽 Selecciona:", [
             ("camarones", "🍤 Camarones"),
             ("pulpo", "🐙 Pulpo"),
             ("filete", "🐟 Filete")
         ])
 
     elif texto == "bebidas":
-        botones(numero, "🍹 Selecciona:", [
-            ("coca cola", "🥤 Coca Cola"),
-            ("pepsi", "🥤 Pepsi"),
-            ("7 up", "🥤 7 UP")
+        lista(numero, "🍹 Bebidas:", [
+            ("bebidas|coca cola", "🥤 Coca Cola $30"),
+            ("bebidas|pepsi", "🥤 Pepsi $25"),
+            ("bebidas|7 up", "🥤 7 UP $25"),
+            ("bebidas|manzana", "🥤 Manzana $25"),
+            ("bebidas|sprite", "🥤 Sprite $30")
         ])
 
-    # ===== SUBMENÚ =====
-
     elif texto in menu:
-        opciones = menu[texto]
-        lista = [(f"{texto}|{k}", k.title()) for k in opciones]
-        botones(numero, f"{texto.title()}:", lista)
+        opciones = [
+            (f"{texto}|{k}", f"{k.title()} ${menu[texto][k]}")
+            for k in menu[texto]
+        ]
+        lista(numero, f"{texto.title()}:", opciones)
+
+    # ===== AGREGAR PRODUCTO =====
 
     elif "|" in texto:
         categoria, producto = texto.split("|")
@@ -210,7 +249,7 @@ def recibir():
         enviar(numero, resumen(numero))
 
         botones(numero, "¿Qué deseas hacer?", [
-            ("seguir", "➕ Agregar"),
+            ("seguir", "➕ Seguir"),
             ("finalizar", "✅ Finalizar"),
             ("vaciar", "🗑 Vaciar")
         ])
@@ -235,7 +274,7 @@ def recibir():
         if not carritos.get(numero):
             enviar(numero, "⚠️ Tu pedido está vacío")
         else:
-            estado_usuario[numero] = "nombre"
+            estado[numero] = "nombre"
             enviar(numero, "👤 Escribe tu nombre:")
 
     elif "gracias" in texto:
