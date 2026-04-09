@@ -9,117 +9,38 @@ PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 
 carritos = {}
+estado_usuario = {}
 temp_producto = {}
+datos_cliente = {}
 
-# ===== MENÚ COMPLETO =====
-
+# ===== MENÚ =====
 menu = {
     "comida": {
-
-        "camarones": {
-            "a la diabla": 180,
-            "empanizados": 190,
-            "al ajo": 180,
-            "al ajillo": 180
-        },
-
-        "pulpo": {
-            "a la diabla": 220,
-            "empanizado": 220,
-            "zarandeado": 220
-        },
-
-        "filete": {
-            "a la diabla": 160,
-            "empanizado": 170,
-            "al ajo": 170
-        },
-
-        "coctel": {
-            "camaron": 190,
-            "pulpo": 200,
-            "callo": 250,
-            "mixto": 220
-        },
-
-        # 🔥 NUEVO
-        "ceviches": {
-            "pescado": 180,
-            "camaron": 200
-        },
-
         "aguachiles": {
             "verde": 190,
             "negro": 190,
             "rojo": 190
         },
-
+        "ceviches": {
+            "pescado": 180,
+            "camaron": 200
+        },
         "cortes finos": {
             "arrachera": 220,
             "t-bone": 250,
             "rib eye": 270
         }
     },
-
     "bebidas": {
-
-        "cervezas": {
-            "corona extra": 40,
-            "corona light": 40,
-            "heineken cero": 40,
-            "tecate": 35,
-            "tecate light": 35,
-            "sol clamato": 30,
-            "indio": 35,
-            "ultra": 40,
-            "pacifico": 40
-        },
-
         "refrescos": {
             "coca cola": 30,
             "pepsi": 25,
-            "7 up": 25,
-            "manzana": 25,
-            "sprite": 30,
-            "coca light": 30
-        },
-
-        "aguas 1lt": {
-            "arroz": 30,
-            "jamaica": 30,
-            "piña": 30,
-            "limon": 30,
-            "naranja": 30
-        },
-
-        "aguas 1/2lt": {
-            "arroz": 15,
-            "jamaica": 15,
-            "piña": 15,
-            "limon": 15,
-            "naranja": 15
-        },
-
-        "micheladas": {
-            "camaron": 100,
-            "clamato": 80,
-            "tamarindo": 90
-        },
-
-        "preparadas": {
-            "piñada": 80,
-            "piña colada": 100,
-            "mojito": 80,
-            "clerico": 90,
-            "margarita": 100,
-            "paloma": 85,
-            "rusa": 75
+            "7 up": 25
         }
     }
 }
 
-# ===== FUNCIONES =====
-
+# ===== ENVIAR =====
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
     headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
@@ -148,7 +69,7 @@ def botones(numero, texto, opciones):
             "action": {
                 "buttons": [
                     {"type": "reply", "reply": {"id": op[0], "title": op[1]}}
-                    for op in opciones[:3]
+                    for op in opciones
                 ]
             }
         }
@@ -181,28 +102,37 @@ def lista(numero, texto, opciones):
     requests.post(url, headers=headers, json=data)
 
 
+# ===== CARRITO AGRUPADO =====
 def agregar(numero, producto, precio, cantidad):
     if numero not in carritos:
-        carritos[numero] = []
+        carritos[numero] = {}
 
-    for _ in range(int(cantidad)):
-        carritos[numero].append({"producto": producto, "precio": precio})
+    if producto in carritos[numero]:
+        carritos[numero][producto]["cantidad"] += cantidad
+    else:
+        carritos[numero][producto] = {
+            "precio": precio,
+            "cantidad": cantidad
+        }
 
 
 def resumen(numero):
-    carrito = carritos.get(numero, [])
-    total = sum(i["precio"] for i in carrito)
+    carrito = carritos.get(numero, {})
+    total = 0
 
     texto = "🧾 Tu pedido:\n\n"
-    for item in carrito:
-        texto += f"• {item['producto']} - ${item['precio']}\n"
+
+    for producto, data in carrito.items():
+        subtotal = data["precio"] * data["cantidad"]
+        total += subtotal
+
+        texto += f"• {data['cantidad']} {producto} - ${subtotal}\n"
 
     texto += f"\n💵 Total: ${total}"
     return texto
 
 
 # ===== WEBHOOK =====
-
 @app.route("/webhook", methods=["GET"])
 def verify():
     if request.args.get("hub.verify_token") == VERIFY_TOKEN:
@@ -227,93 +157,94 @@ def recibir():
     except:
         return "ok", 200
 
-    # ===== MENÚ PRINCIPAL =====
+    # ===== MENÚ =====
     if texto in ["hola", "menu"]:
-        botones(numero, "👋 Bienvenido 🦐", [
+        botones(numero, "👋 Bienvenido", [
             ("comida", "🍽 Comida"),
             ("bebidas", "🍹 Bebidas"),
             ("pedido", "🧾 Pedido")
         ])
 
-    # ===== COMIDA =====
     elif texto == "comida":
-        lista(numero, "🍽 Comida:", [
-            ("camarones", "🍤 Camarones"),
-            ("pulpo", "🐙 Pulpo"),
-            ("filete", "🐟 Filete"),
-            ("coctel", "🥣 Cóctel"),
-            ("ceviches", "🥗 Ceviches"),
+        lista(numero, "🍽 Selecciona:", [
             ("aguachiles", "🌶 Aguachiles"),
-            ("cortes finos", "🥩 Cortes Finos")
+            ("ceviches", "🥗 Ceviches"),
+            ("cortes finos", "🥩 Cortes")
         ])
 
-    # ===== BEBIDAS =====
-    elif texto == "bebidas":
-        lista(numero, "🍹 Bebidas:", [
-            ("cervezas", "🍺 Cervezas"),
-            ("refrescos", "🥤 Refrescos"),
-            ("aguas 1lt", "🧃 Aguas 1L"),
-            ("aguas 1/2lt", "🧃 Aguas 1/2L"),
-            ("micheladas", "🍹 Micheladas"),
-            ("preparadas", "🍸 Preparadas")
-        ])
-
-    # ===== SUBMENÚ DINÁMICO =====
-    else:
-        for categoria in menu:
-            if texto in menu[categoria]:
-                opciones = [
-                    (f"{texto}|{p}", f"{p.title()} ${menu[categoria][texto][p]}")
-                    for p in menu[categoria][texto]
-                ]
-                lista(numero, texto.title(), opciones)
-                return "ok", 200
+    elif texto in menu["comida"]:
+        opciones = [
+            (f"{texto}|{p}", f"{p.title()} ${menu['comida'][texto][p]}")
+            for p in menu["comida"][texto]
+        ]
+        lista(numero, texto.title(), opciones)
 
     # ===== PRODUCTO =====
-    if "|" in texto:
+    elif "|" in texto:
         cat, prod = texto.split("|")
 
-        for c in menu:
-            if cat in menu[c]:
-                precio = menu[c][cat][prod]
+        precio = menu["comida"][cat][prod]
 
-        temp_producto[numero] = (prod, precio)
+        temp_producto[numero] = (cat, prod, precio)
+        estado_usuario[numero] = "cantidad"
 
-        botones(numero, f"¿Cuántos {prod}?", [
-            ("1", "1️⃣"),
-            ("2", "2️⃣"),
-            ("3", "3️⃣")
-        ])
+        enviar(numero, f"¿Cuántos {cat} {prod} necesitas?")
 
-    elif texto in ["1", "2", "3"]:
-        prod, precio = temp_producto[numero]
-        agregar(numero, prod, precio, texto)
+    # ===== CANTIDAD =====
+    elif estado_usuario.get(numero) == "cantidad":
+        try:
+            cantidad = int(texto)
+            cat, prod, precio = temp_producto[numero]
 
-        enviar(numero, f"✅ {texto} {prod} agregado")
-        enviar(numero, resumen(numero))
+            agregar(numero, f"{cat} {prod}", precio, cantidad)
 
-        botones(numero, "¿Qué deseas hacer?", [
-            ("seguir", "➕ Seguir"),
-            ("finalizar", "✅ Finalizar"),
-            ("vaciar", "🗑 Vaciar")
-        ])
+            enviar(numero, f"✅ {cantidad} {cat} {prod} agregado")
+            enviar(numero, resumen(numero))
 
-    elif texto == "pedido":
-        enviar(numero, resumen(numero))
+            botones(numero, "¿Qué deseas hacer?", [
+                ("seguir", "➕ Seguir"),
+                ("finalizar", "✅ Finalizar"),
+                ("vaciar", "🗑 Vaciar")
+            ])
 
-    elif texto == "vaciar":
-        carritos[numero] = []
-        enviar(numero, "🗑 Pedido vaciado")
+            estado_usuario[numero] = None
 
-    elif texto == "seguir":
-        botones(numero, "Menú:", [
-            ("comida", "🍽 Comida"),
-            ("bebidas", "🍹 Bebidas"),
-            ("pedido", "🧾 Pedido")
-        ])
+        except:
+            enviar(numero, "❌ Escribe un número válido")
 
+    # ===== FINALIZAR =====
     elif texto == "finalizar":
+        estado_usuario[numero] = "nombre"
+        enviar(numero, "🧑 ¿A nombre de quién es el pedido?")
+
+    elif estado_usuario.get(numero) == "nombre":
+        datos_cliente[numero] = {"nombre": texto}
+        estado_usuario[numero] = "direccion"
+        enviar(numero, "📍 Ingresa la dirección de entrega")
+
+    elif estado_usuario.get(numero) == "direccion":
+        datos_cliente[numero]["direccion"] = texto
+        estado_usuario[numero] = "telefono"
+        enviar(numero, "📞 Ingresa tu número telefónico")
+
+    elif estado_usuario.get(numero) == "telefono":
+        datos_cliente[numero]["telefono"] = texto
+        estado_usuario[numero] = "confirmar"
+
+        resumen_final = resumen(numero)
+        info = datos_cliente[numero]
+
+        enviar(numero, resumen_final)
+        enviar(numero,
+               f"\n📦 Datos:\n👤 {info['nombre']}\n📍 {info['direccion']}\n📞 {info['telefono']}")
+
+        botones(numero, "¿Confirmar pedido?", [
+            ("confirmar", "✅ Confirmar")
+        ])
+
+    elif texto == "confirmar":
         enviar(numero, "🙏 Gracias por su preferencia")
+        estado_usuario[numero] = None
 
     elif "gracias" in texto:
         enviar(numero, "🙏 Gracias a usted por su preferencia")
