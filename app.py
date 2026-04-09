@@ -4,39 +4,117 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# ===== CONFIG =====
 TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 
-# ===== DATA =====
 carritos = {}
-estado = {}
-datos = {}
+temp_producto = {}
+
+# ===== MENÚ COMPLETO =====
 
 menu = {
-    "camarones": {
-        "a la diabla": 180,
-        "empanizados": 190,
-        "al ajo": 180,
-        "al ajillo": 180
+    "comida": {
+
+        "camarones": {
+            "a la diabla": 180,
+            "empanizados": 190,
+            "al ajo": 180,
+            "al ajillo": 180
+        },
+
+        "pulpo": {
+            "a la diabla": 220,
+            "empanizado": 220,
+            "zarandeado": 220
+        },
+
+        "filete": {
+            "a la diabla": 160,
+            "empanizado": 170,
+            "al ajo": 170
+        },
+
+        "coctel": {
+            "camaron": 190,
+            "pulpo": 200,
+            "callo": 250,
+            "mixto": 220
+        },
+
+        # 🔥 NUEVO
+        "ceviches": {
+            "pescado": 180,
+            "camaron": 200
+        },
+
+        "aguachiles": {
+            "verde": 190,
+            "negro": 190,
+            "rojo": 190
+        },
+
+        "cortes finos": {
+            "arrachera": 220,
+            "t-bone": 250,
+            "rib eye": 270
+        }
     },
-    "pulpo": {
-        "a la diabla": 220,
-        "empanizado": 220,
-        "zarandeado": 220
-    },
-    "filete": {
-        "a la diabla": 160,
-        "empanizado": 170,
-        "al ajo": 170
-    },
+
     "bebidas": {
-        "coca cola": 30,
-        "pepsi": 25,
-        "7 up": 25,
-        "manzana": 25,
-        "sprite": 30
+
+        "cervezas": {
+            "corona extra": 40,
+            "corona light": 40,
+            "heineken cero": 40,
+            "tecate": 35,
+            "tecate light": 35,
+            "sol clamato": 30,
+            "indio": 35,
+            "ultra": 40,
+            "pacifico": 40
+        },
+
+        "refrescos": {
+            "coca cola": 30,
+            "pepsi": 25,
+            "7 up": 25,
+            "manzana": 25,
+            "sprite": 30,
+            "coca light": 30
+        },
+
+        "aguas 1lt": {
+            "arroz": 30,
+            "jamaica": 30,
+            "piña": 30,
+            "limon": 30,
+            "naranja": 30
+        },
+
+        "aguas 1/2lt": {
+            "arroz": 15,
+            "jamaica": 15,
+            "piña": 15,
+            "limon": 15,
+            "naranja": 15
+        },
+
+        "micheladas": {
+            "camaron": 100,
+            "clamato": 80,
+            "tamarindo": 90
+        },
+
+        "preparadas": {
+            "piñada": 80,
+            "piña colada": 100,
+            "mojito": 80,
+            "clerico": 90,
+            "margarita": 100,
+            "paloma": 85,
+            "rusa": 75
+        }
     }
 }
 
@@ -44,25 +122,21 @@ menu = {
 
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {TOKEN}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
+
     data = {
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "text",
         "text": {"body": texto}
     }
+
     requests.post(url, headers=headers, json=data)
 
 
 def botones(numero, texto, opciones):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {TOKEN}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 
     data = {
         "messaging_product": "whatsapp",
@@ -73,13 +147,8 @@ def botones(numero, texto, opciones):
             "body": {"text": texto},
             "action": {
                 "buttons": [
-                    {
-                        "type": "reply",
-                        "reply": {
-                            "id": op[0],
-                            "title": op[1]
-                        }
-                    } for op in opciones[:3]
+                    {"type": "reply", "reply": {"id": op[0], "title": op[1]}}
+                    for op in opciones[:3]
                 ]
             }
         }
@@ -90,10 +159,7 @@ def botones(numero, texto, opciones):
 
 def lista(numero, texto, opciones):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {TOKEN}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 
     data = {
         "messaging_product": "whatsapp",
@@ -104,17 +170,10 @@ def lista(numero, texto, opciones):
             "body": {"text": texto},
             "action": {
                 "button": "Ver opciones",
-                "sections": [
-                    {
-                        "title": "Menú",
-                        "rows": [
-                            {
-                                "id": op[0],
-                                "title": op[1]
-                            } for op in opciones
-                        ]
-                    }
-                ]
+                "sections": [{
+                    "title": "Menú",
+                    "rows": [{"id": op[0], "title": op[1]} for op in opciones]
+                }]
             }
         }
     }
@@ -122,30 +181,24 @@ def lista(numero, texto, opciones):
     requests.post(url, headers=headers, json=data)
 
 
-def resumen(numero):
-    carrito = carritos.get(numero, [])
-    if not carrito:
-        return "🧾 Tu pedido está vacío"
-
-    texto = "🧾 Tu pedido:\n\n"
-    total = 0
-
-    for item in carrito:
-        texto += f"• {item['producto']} - ${item['precio']}\n"
-        total += item["precio"]
-
-    texto += f"\n💵 Total: ${total}"
-    return texto
-
-
-def agregar(numero, producto, precio):
+def agregar(numero, producto, precio, cantidad):
     if numero not in carritos:
         carritos[numero] = []
 
-    carritos[numero].append({
-        "producto": producto,
-        "precio": precio
-    })
+    for _ in range(int(cantidad)):
+        carritos[numero].append({"producto": producto, "precio": precio})
+
+
+def resumen(numero):
+    carrito = carritos.get(numero, [])
+    total = sum(i["precio"] for i in carrito)
+
+    texto = "🧾 Tu pedido:\n\n"
+    for item in carrito:
+        texto += f"• {item['producto']} - ${item['precio']}\n"
+
+    texto += f"\n💵 Total: ${total}"
+    return texto
 
 
 # ===== WEBHOOK =====
@@ -162,90 +215,81 @@ def recibir():
     data = request.json
 
     try:
-        mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
-        numero = mensaje["from"]
+        msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        numero = msg["from"]
 
-        if "text" in mensaje:
-            texto = mensaje["text"]["body"].lower()
+        if "text" in msg:
+            texto = msg["text"]["body"].lower()
         else:
-            texto = mensaje["interactive"]["list_reply"]["id"] if "list_reply" in mensaje["interactive"] else mensaje["interactive"]["button_reply"]["id"]
+            texto = msg["interactive"].get("list_reply", {}).get("id") or \
+                    msg["interactive"].get("button_reply", {}).get("id")
 
     except:
         return "ok", 200
 
-    # ===== FLUJO DATOS =====
-
-    if estado.get(numero) == "nombre":
-        datos[numero] = {"nombre": texto}
-        estado[numero] = "direccion"
-        enviar(numero, "📍 Escribe tu dirección:")
-        return "ok", 200
-
-    elif estado.get(numero) == "direccion":
-        datos[numero]["direccion"] = texto
-        estado[numero] = "telefono"
-        enviar(numero, "📞 Escribe tu teléfono:")
-        return "ok", 200
-
-    elif estado.get(numero) == "telefono":
-        datos[numero]["telefono"] = texto
-        estado[numero] = None
-
-        enviar(numero, "📦 Pedido confirmado:")
-        enviar(numero, resumen(numero))
-
-        enviar(numero,
-               f"👤 {datos[numero]['nombre']}\n"
-               f"📍 {datos[numero]['direccion']}\n"
-               f"📞 {datos[numero]['telefono']}")
-
-        enviar(numero, "🙏 Gracias por su preferencia")
-        carritos[numero] = []
-        return "ok", 200
-
-    # ===== MENÚ PRINCIPAL (BOTONES) =====
-
-    if texto in ["hola", "menu", "menú"]:
-        botones(numero, "👋 Bienvenido a Marisco Alegre 🦐", [
+    # ===== MENÚ PRINCIPAL =====
+    if texto in ["hola", "menu"]:
+        botones(numero, "👋 Bienvenido 🦐", [
             ("comida", "🍽 Comida"),
             ("bebidas", "🍹 Bebidas"),
-            ("pedido", "🧾 Ver pedido")
+            ("pedido", "🧾 Pedido")
         ])
 
-    # ===== SUBMENÚS (LISTAS) =====
-
+    # ===== COMIDA =====
     elif texto == "comida":
-        lista(numero, "🍽 Selecciona:", [
+        lista(numero, "🍽 Comida:", [
             ("camarones", "🍤 Camarones"),
             ("pulpo", "🐙 Pulpo"),
-            ("filete", "🐟 Filete")
+            ("filete", "🐟 Filete"),
+            ("coctel", "🥣 Cóctel"),
+            ("ceviches", "🥗 Ceviches"),
+            ("aguachiles", "🌶 Aguachiles"),
+            ("cortes finos", "🥩 Cortes Finos")
         ])
 
+    # ===== BEBIDAS =====
     elif texto == "bebidas":
         lista(numero, "🍹 Bebidas:", [
-            ("bebidas|coca cola", "🥤 Coca Cola $30"),
-            ("bebidas|pepsi", "🥤 Pepsi $25"),
-            ("bebidas|7 up", "🥤 7 UP $25"),
-            ("bebidas|manzana", "🥤 Manzana $25"),
-            ("bebidas|sprite", "🥤 Sprite $30")
+            ("cervezas", "🍺 Cervezas"),
+            ("refrescos", "🥤 Refrescos"),
+            ("aguas 1lt", "🧃 Aguas 1L"),
+            ("aguas 1/2lt", "🧃 Aguas 1/2L"),
+            ("micheladas", "🍹 Micheladas"),
+            ("preparadas", "🍸 Preparadas")
         ])
 
-    elif texto in menu:
-        opciones = [
-            (f"{texto}|{k}", f"{k.title()} ${menu[texto][k]}")
-            for k in menu[texto]
-        ]
-        lista(numero, f"{texto.title()}:", opciones)
+    # ===== SUBMENÚ DINÁMICO =====
+    else:
+        for categoria in menu:
+            if texto in menu[categoria]:
+                opciones = [
+                    (f"{texto}|{p}", f"{p.title()} ${menu[categoria][texto][p]}")
+                    for p in menu[categoria][texto]
+                ]
+                lista(numero, texto.title(), opciones)
+                return "ok", 200
 
-    # ===== AGREGAR PRODUCTO =====
+    # ===== PRODUCTO =====
+    if "|" in texto:
+        cat, prod = texto.split("|")
 
-    elif "|" in texto:
-        categoria, producto = texto.split("|")
-        precio = menu[categoria][producto]
+        for c in menu:
+            if cat in menu[c]:
+                precio = menu[c][cat][prod]
 
-        agregar(numero, producto, precio)
+        temp_producto[numero] = (prod, precio)
 
-        enviar(numero, f"✅ {producto} agregado")
+        botones(numero, f"¿Cuántos {prod}?", [
+            ("1", "1️⃣"),
+            ("2", "2️⃣"),
+            ("3", "3️⃣")
+        ])
+
+    elif texto in ["1", "2", "3"]:
+        prod, precio = temp_producto[numero]
+        agregar(numero, prod, precio, texto)
+
+        enviar(numero, f"✅ {texto} {prod} agregado")
         enviar(numero, resumen(numero))
 
         botones(numero, "¿Qué deseas hacer?", [
@@ -253,8 +297,6 @@ def recibir():
             ("finalizar", "✅ Finalizar"),
             ("vaciar", "🗑 Vaciar")
         ])
-
-    # ===== ACCIONES =====
 
     elif texto == "pedido":
         enviar(numero, resumen(numero))
@@ -271,11 +313,7 @@ def recibir():
         ])
 
     elif texto == "finalizar":
-        if not carritos.get(numero):
-            enviar(numero, "⚠️ Tu pedido está vacío")
-        else:
-            estado[numero] = "nombre"
-            enviar(numero, "👤 Escribe tu nombre:")
+        enviar(numero, "🙏 Gracias por su preferencia")
 
     elif "gracias" in texto:
         enviar(numero, "🙏 Gracias a usted por su preferencia")
