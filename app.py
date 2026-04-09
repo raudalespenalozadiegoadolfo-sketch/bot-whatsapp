@@ -10,18 +10,51 @@ PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 ADMIN_PHONE = os.getenv("ADMIN_NUMERO")
 
-# ===== DATA =====
+# ===== MEMORIA =====
 usuarios = {}
 
+# ===== MENÚ =====
 menu = {
-    "almeja": 300,
-    "ostion": 400,
-    "ceviche": 200,
-    "ceviche camaron": 250,
-    "aguachile": 260,
-    "cerveza": 40,
-    "michelada": 100,
-    "refresco": 35
+    "corona extra": 40,
+    "corona light": 40,
+    "heineken cero": 40,
+    "tecate": 35,
+    "tecate light": 35,
+    "sol clamato": 30,
+    "indio": 35,
+    "ultra": 40,
+    "pacifico": 40,
+
+    "michelada camaron": 100,
+    "michelada clamato": 80,
+    "michelada tamarindo": 90,
+
+    "coca cola": 30,
+    "pepsi": 25,
+    "7up": 25,
+    "manzana": 25,
+    "sprite": 30,
+    "coca light": 30,
+
+    "agua arroz": 30,
+    "agua jamaica": 30,
+    "agua piña": 30,
+    "agua limon": 30,
+    "agua naranja": 30,
+
+    "agua arroz 1/2": 15,
+    "agua jamaica 1/2": 15,
+    "agua piña 1/2": 15,
+    "agua limon 1/2": 15,
+    "agua naranja 1/2": 15,
+
+    "piñada": 80,
+    "piña colada": 100,
+    "mojito": 80,
+    "clerico": 90,
+    "margarita": 100,
+    "paloma": 85,
+    "rusa": 75
 }
 
 # ===== SEND =====
@@ -42,7 +75,7 @@ def texto(numero, msg):
     })
 
 # ===== UI =====
-def botones_inicio(numero):
+def inicio(numero):
     enviar(numero, {
         "messaging_product": "whatsapp",
         "to": numero,
@@ -59,74 +92,68 @@ def botones_inicio(numero):
         }
     })
 
-def lista_categorias(numero):
+# ===== LISTAS =====
+def lista(numero, titulo, items):
+    rows = [{"id": k, "title": f"{k} - ${v}"} for k, v in items]
+    rows.append({"id": "volver", "title": "⬅️ Volver"})
+
     enviar(numero, {
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "interactive",
         "interactive": {
             "type": "list",
-            "body": {"text": "📂 Categorías"},
+            "body": {"text": titulo},
             "action": {
                 "button": "Ver",
                 "sections": [{
                     "title": "Opciones",
-                    "rows": [
-                        {"id": "mariscos", "title": "🦐 Mariscos"},
-                        {"id": "bebidas", "title": "🍺 Bebidas"}
-                    ]
+                    "rows": rows[:10]
                 }]
             }
         }
     })
 
-def lista_mariscos(numero):
-    enviar(numero, {
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": "🦐 Mariscos"},
-            "action": {
-                "button": "Ver",
-                "sections": [{
-                    "title": "Productos",
-                    "rows": [
-                        {"id": "almeja", "title": "Almeja"},
-                        {"id": "ostion", "title": "Ostion"},
-                        {"id": "ceviche", "title": "Ceviche"},
-                        {"id": "volver", "title": "⬅️ Volver"}
-                    ]
-                }]
-            }
-        }
-    })
+# ===== MENÚ =====
+def categorias(numero):
+    lista(numero, "📂 Categorías", [("bebidas", "")])
 
-def lista_bebidas(numero):
-    enviar(numero, {
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": "🍺 Bebidas"},
-            "action": {
-                "button": "Ver",
-                "sections": [{
-                    "title": "Productos",
-                    "rows": [
-                        {"id": "cerveza", "title": "Cerveza"},
-                        {"id": "michelada", "title": "Michelada"},
-                        {"id": "refresco", "title": "Refresco"},
-                        {"id": "volver", "title": "⬅️ Volver"}
-                    ]
-                }]
-            }
-        }
-    })
+def bebidas(numero):
+    lista(numero, "🍹 Bebidas", [
+        ("cervezas", ""),
+        ("micheladas", ""),
+        ("refrescos", ""),
+        ("aguas1", ""),
+        ("aguas05", ""),
+        ("preparadas", "")
+    ])
 
-def botones_cantidad(numero, producto):
+def cervezas(numero):
+    lista(numero, "🍺 Cervezas", [(k, v) for k, v in menu.items() if k in [
+        "corona extra","corona light","heineken cero","tecate","tecate light","sol clamato","indio","ultra","pacifico"
+    ]])
+
+def micheladas(numero):
+    lista(numero, "🍹 Micheladas", [(k, v) for k, v in menu.items() if "michelada" in k])
+
+def refrescos(numero):
+    lista(numero, "🥤 Refrescos", [(k, v) for k, v in menu.items() if k in [
+        "coca cola","pepsi","7up","manzana","sprite","coca light"
+    ]])
+
+def aguas1(numero):
+    lista(numero, "🧃 Aguas 1L", [(k, v) for k, v in menu.items() if "agua" in k and "1/2" not in k])
+
+def aguas05(numero):
+    lista(numero, "🧃 Aguas 1/2L", [(k, v) for k, v in menu.items() if "1/2" in k])
+
+def preparadas(numero):
+    lista(numero, "🍸 Preparadas", [(k, v) for k, v in menu.items() if k in [
+        "piñada","piña colada","mojito","clerico","margarita","paloma","rusa"
+    ]])
+
+# ===== CANTIDAD =====
+def cantidad(numero, producto):
     enviar(numero, {
         "messaging_product": "whatsapp",
         "to": numero,
@@ -144,6 +171,7 @@ def botones_cantidad(numero, producto):
         }
     })
 
+# ===== CARRITO =====
 def carrito(numero):
     pedido = usuarios[numero]["pedido"]
 
@@ -154,10 +182,10 @@ def carrito(numero):
     total = 0
     msg = "🛒 CARRITO:\n\n"
 
-    for item, cant in pedido.items():
-        subtotal = cant * menu[item]
+    for p, c in pedido.items():
+        subtotal = menu[p] * c
         total += subtotal
-        msg += f"{cant} x {item} = ${subtotal}\n"
+        msg += f"{c} x {p} = ${subtotal}\n"
 
     msg += f"\n💰 Total: ${total}"
 
@@ -174,7 +202,7 @@ def carrito(numero):
                 "buttons": [
                     {"type": "reply", "reply": {"id": "seguir", "title": "➕ Agregar"}},
                     {"type": "reply", "reply": {"id": "finalizar", "title": "✅ Finalizar"}},
-                    {"type": "reply", "reply": {"id": "cancelar", "title": "🗑 Vaciar"}}
+                    {"type": "reply", "reply": {"id": "vaciar", "title": "🗑 Vaciar"}}
                 ]
             }
         }
@@ -193,7 +221,6 @@ def recibir():
 
     try:
         value = data["entry"][0]["changes"][0]["value"]
-
         if "messages" not in value:
             return "ok"
 
@@ -205,68 +232,52 @@ def recibir():
 
         user = usuarios[numero]
 
-        # ===== INTERACTIVO =====
+        # ===== INTERACTIVE =====
         if msg["type"] == "interactive":
             inter = msg["interactive"]
 
             if inter["type"] == "list_reply":
-                opcion = inter["list_reply"]["id"]
+                op = inter["list_reply"]["id"]
 
-                if opcion == "mariscos":
-                    lista_mariscos(numero)
-                    return "ok"
+                if op == "bebidas": bebidas(numero)
+                elif op == "cervezas": cervezas(numero)
+                elif op == "micheladas": micheladas(numero)
+                elif op == "refrescos": refrescos(numero)
+                elif op == "aguas1": aguas1(numero)
+                elif op == "aguas05": aguas05(numero)
+                elif op == "preparadas": preparadas(numero)
+                elif op == "volver": bebidas(numero)
+                else: cantidad(numero, op)
 
-                if opcion == "bebidas":
-                    lista_bebidas(numero)
-                    return "ok"
-
-                if opcion == "volver":
-                    lista_categorias(numero)
-                    return "ok"
-
-                botones_cantidad(numero, opcion)
                 return "ok"
 
             if inter["type"] == "button_reply":
-                data_btn = inter["button_reply"]["id"]
+                btn = inter["button_reply"]["id"]
 
-                if data_btn == "menu":
-                    lista_categorias(numero)
-                    return "ok"
-
-                if data_btn == "carrito":
-                    carrito(numero)
-                    return "ok"
-
-                if data_btn == "seguir":
-                    lista_categorias(numero)
-                    return "ok"
-
-                if data_btn == "cancelar":
-                    usuarios[numero]["pedido"] = {}
+                if btn == "menu": categorias(numero)
+                elif btn == "carrito": carrito(numero)
+                elif btn == "seguir": categorias(numero)
+                elif btn == "vaciar":
+                    user["pedido"] = {}
                     texto(numero, "🗑 Carrito vacío")
-                    return "ok"
 
-                if data_btn == "finalizar":
+                elif btn == "finalizar":
                     user["estado"] = "nombre"
                     texto(numero, "📝 Nombre:")
-                    return "ok"
 
-                if "|" in data_btn:
-                    prod, cant = data_btn.split("|")
-                    cant = int(cant)
-
-                    user["pedido"][prod] = user["pedido"].get(prod, 0) + cant
-
+                elif "|" in btn:
+                    p, c = btn.split("|")
+                    user["pedido"][p] = user["pedido"].get(p, 0) + int(c)
                     carrito(numero)
-                    return "ok"
+
+                return "ok"
 
         # ===== TEXTO =====
         if msg["type"] == "text":
-            texto_user = msg["text"]["body"].lower()
+            txt = msg["text"]["body"].lower()
 
-            if texto_user in ["hola", "hi"]:
-                botones_inicio(numero)
+            if txt in ["hola", "menu"]:
+                inicio(numero)
                 return "ok"
 
         # ===== DATOS =====
@@ -286,8 +297,8 @@ def recibir():
             user["telefono"] = msg["text"]["body"]
 
             resumen = "📦 PEDIDO\n\n"
-            for i, c in user["pedido"].items():
-                resumen += f"{c} x {i}\n"
+            for p, c in user["pedido"].items():
+                resumen += f"{c} x {p}\n"
 
             resumen += f"\n👤 {user['nombre']}"
             resumen += f"\n📍 {user['direccion']}"
