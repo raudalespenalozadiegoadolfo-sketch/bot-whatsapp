@@ -12,8 +12,9 @@ carritos = {}
 estado = {}
 temp = {}
 datos = {}
+contador_orden = 1
 
-# ===== MENÚ COMPLETO =====
+# ===== MENÚ =====
 menu = {
     "comida": {
         "camarones": {
@@ -161,26 +162,29 @@ def lista(numero, texto, opciones):
     )
 
 # ===== CARRITO =====
-def agregar(numero, prod, precio, cant):
+def agregar(numero, producto, precio, cantidad):
     if numero not in carritos:
         carritos[numero] = {}
 
-    if prod in carritos[numero]:
-        carritos[numero][prod]["cant"] += cant
+    if producto in carritos[numero]:
+        carritos[numero][producto]["cant"] += cantidad
     else:
-        carritos[numero][prod] = {"precio": precio, "cant": cant}
+        carritos[numero][producto] = {
+            "precio": precio,
+            "cant": cantidad
+        }
 
 def resumen(numero):
     total = 0
-    txt = "🧾 Tu pedido:\n\n"
+    texto = "🧾 Tu pedido:\n\n"
 
     for p, d in carritos.get(numero, {}).items():
         sub = d["precio"] * d["cant"]
         total += sub
-        txt += f"• {d['cant']} {p} - ${sub}\n"
+        texto += f"• {d['cant']} {p} - ${sub}\n"
 
-    txt += f"\n💵 Total: ${total}"
-    return txt
+    texto += f"\n💵 Total: ${total}"
+    return texto
 
 # ===== WEBHOOK =====
 @app.route("/webhook", methods=["GET"])
@@ -191,6 +195,8 @@ def verify():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    global contador_orden
+
     data = request.json
 
     try:
@@ -235,20 +241,22 @@ def webhook():
         cat, sub, prod = texto.split("|")
         precio = menu[cat][sub][prod]
 
-        temp[numero] = (prod, precio)
+        nombre = f"{sub.title()} {prod.title()}"
+
+        temp[numero] = (nombre, precio)
         estado[numero] = "cantidad"
 
-        enviar(numero, f"¿Cuántos {prod} necesitas?")
+        enviar(numero, f"¿Cuántos {nombre} necesitas?")
 
     # ===== CANTIDAD =====
     elif estado.get(numero) == "cantidad":
         try:
-            cant = int(texto)
-            prod, precio = temp[numero]
+            cantidad = int(texto)
+            nombre, precio = temp[numero]
 
-            agregar(numero, prod, precio, cant)
+            agregar(numero, nombre, precio, cantidad)
 
-            enviar(numero, f"✅ {cant} {prod} agregado")
+            enviar(numero, f"✅ {cantidad} {nombre} agregado")
             enviar(numero, resumen(numero))
 
             botones(numero, "¿Qué deseas hacer?", [
@@ -284,18 +292,33 @@ def webhook():
 
     elif estado.get(numero) == "telefono":
         datos[numero]["telefono"] = texto
-        estado[numero] = "confirmar"
 
+        orden = f"ORD-{str(contador_orden).zfill(4)}"
+        contador_orden += 1
+
+        datos[numero]["orden"] = orden
+
+        enviar(numero, f"🧾 Orden: {orden}")
         enviar(numero, resumen(numero))
-        enviar(numero,
-               f"\n📦 {datos[numero]['nombre']}\n📍 {datos[numero]['direccion']}\n📞 {datos[numero]['telefono']}")
 
         botones(numero, "Confirmar pedido", [
             ("confirmar", "✅ Confirmar")
         ])
 
+        estado[numero] = "confirmar"
+
     elif texto == "confirmar":
+        info = datos[numero]
+
+        enviar(numero,
+               f"✅ Pedido confirmado\n\n"
+               f"🧾 {info['orden']}\n"
+               f"👤 {info['nombre']}\n"
+               f"📍 {info['direccion']}\n"
+               f"📞 {info['telefono']}")
+
         enviar(numero, "🙏 Gracias por su preferencia")
+
         estado[numero] = None
 
     elif "gracias" in texto:
