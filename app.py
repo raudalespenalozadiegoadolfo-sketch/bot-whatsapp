@@ -2,7 +2,7 @@ import os
 import re
 import requests
 import unicodedata
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 app = Flask(__name__)
 
@@ -16,30 +16,27 @@ carritos = {}
 
 # ===== MENÚ =====
 menu = {
-    # REFRESCOS
+    # BEBIDAS
     "coca cola": 30,
     "coca cola light": 30,
     "pepsi": 25,
     "sangria": 25,
     "7up": 25,
 
-    # AGUAS
     "agua arroz": 35,
     "agua jamaica": 35,
-    "agua piña": 35,
+    "agua pina": 35,
     "agua limon": 35,
 
     "agua arroz 1/2": 20,
     "agua jamaica 1/2": 20,
-    "agua piña 1/2": 20,
+    "agua pina 1/2": 20,
     "agua limon 1/2": 20,
 
-    # MICHELADAS
     "michelada camaron": 100,
     "michelada clamato": 80,
     "michelada tamarindo": 90,
 
-    # CERVEZAS
     "corona extra": 40,
     "corona light": 40,
     "corona cero": 40,
@@ -73,11 +70,7 @@ menu = {
 
     "aguachile verde": 190,
     "aguachile rojo": 190,
-    "aguachile negro": 190,
-
-    "corte arrachera": 220,
-    "corte tbone": 250,
-    "corte ribeye": 270
+    "aguachile negro": 190
 }
 
 # ===== NORMALIZAR TEXTO =====
@@ -90,85 +83,20 @@ def normalizar(texto):
 # ===== ENVIAR MENSAJE =====
 def enviar(numero, texto):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
     }
+
     data = {
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "text",
         "text": {"body": texto}
     }
-    requests.post(url, headers=headers, json=data)
-
-# ===== BOTONES =====
-def botones(numero, texto, opciones):
-    url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    botones = []
-    for i, (id_op, title) in enumerate(opciones[:3]):
-        botones.append({
-            "type": "reply",
-            "reply": {"id": id_op, "title": title}
-        })
-
-    data = {
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "button",
-            "body": {"text": texto},
-            "action": {"buttons": botones}
-        }
-    }
 
     requests.post(url, headers=headers, json=data)
-
-# ===== LISTA =====
-def lista(numero, titulo, items):
-    url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    rows = []
-    for key, precio in items[:10]:
-        rows.append({
-            "id": key,
-            "title": key.title(),
-            "description": f"${precio}"
-        })
-
-    data = {
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": titulo},
-            "action": {
-                "button": "Ver opciones",
-                "sections": [{"title": "Menú", "rows": rows}]
-            }
-        }
-    }
-
-    requests.post(url, headers=headers, json=data)
-
-# ===== CATEGORÍAS =====
-def categorias(numero):
-    botones(numero, "👋 Bienvenido a Marisco Alegre 🦐", [
-        ("bebidas", "🍹 Bebidas"),
-        ("comida", "🍽 Comida"),
-        ("pedido", "🧾 Ver pedido")
-    ])
 
 # ===== PROCESAR PEDIDO =====
 def procesar_pedido(numero, texto):
@@ -177,25 +105,32 @@ def procesar_pedido(numero, texto):
     if numero not in carritos:
         carritos[numero] = []
 
-    items = []
+    lineas = texto.split("\n")
+    encontrados = []
 
-    for producto in menu:
-        if producto in texto:
-            cantidad = 1
-            match = re.search(r'(\d+)\s+' + producto, texto)
-            if match:
-                cantidad = int(match.group(1))
+    for linea in lineas:
+        for producto in menu:
+            if producto in linea:
+                cantidad = 1
 
-            items.append((producto, cantidad))
+                match = re.search(r'(\d+)', linea)
+                if match:
+                    cantidad = int(match.group(1))
 
-    for producto, cantidad in items:
-        carritos[numero].append((producto, cantidad))
+                encontrados.append((producto, cantidad))
 
-    return items
+    for item in encontrados:
+        carritos[numero].append(item)
 
-# ===== TOTAL =====
+    return encontrados
+
+# ===== RESUMEN =====
 def resumen(numero):
     carrito = carritos.get(numero, [])
+
+    if not carrito:
+        return "🧾 Tu pedido está vacío"
+
     total = 0
     texto = "🧾 Tu pedido:\n\n"
 
@@ -203,6 +138,7 @@ def resumen(numero):
         precio = menu[producto]
         subtotal = precio * cantidad
         total += subtotal
+
         texto += f"{cantidad} x {producto.title()} = ${subtotal}\n"
 
     texto += f"\n💵 Total: ${total}"
@@ -211,23 +147,30 @@ def resumen(numero):
 # ===== WEBHOOK =====
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+
+    # VALIDACIÓN META
     if request.method == "GET":
-        token = request.args.get("hub.verify_token")
-        if token == VERIFY_TOKEN:
+        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
-        return "Error", 403
+        return "error", 403
 
     data = request.json
 
     try:
-        mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        value = data["entry"][0]["changes"][0]["value"]
+
+        # 🔥 EVITA ERROR 'messages'
+        if "messages" not in value:
+            return "ok", 200
+
+        mensaje = value["messages"][0]
         numero = mensaje["from"]
 
-        # TEXTO
+        # TEXTO NORMAL
         if "text" in mensaje:
-            texto = mensaje["text"]["body"].lower()
+            texto = mensaje["text"]["body"]
 
-        # BOTÓN / LISTA
+        # BOTONES / LISTAS
         elif "interactive" in mensaje:
             if "button_reply" in mensaje["interactive"]:
                 texto = mensaje["interactive"]["button_reply"]["id"]
@@ -239,41 +182,31 @@ def webhook():
 
         texto = normalizar(texto)
 
-        # ===== RESPUESTAS INTELIGENTES =====
+        # ===== LÓGICA =====
 
         if "hola" in texto:
-            categorias(numero)
+            enviar(numero, "👋 Bienvenido a Marisco Alegre 🦐\nEscribe tu pedido o escribe 'ver pedido'")
 
         elif "gracias" in texto:
             enviar(numero, "🙏 Gracias a usted por su preferencia")
 
-        elif "finalizar" in texto or "terminar" in texto:
+        elif "ver pedido" in texto or texto == "pedido":
+            enviar(numero, resumen(numero))
+
+        elif "finalizar" in texto:
             enviar(numero, resumen(numero))
             enviar(numero, "🙏 Gracias por su preferencia, su pedido está en proceso")
             carritos[numero] = []
-
-        elif texto == "pedido":
-            enviar(numero, resumen(numero))
-
-        elif texto == "bebidas":
-            enviar(numero, "🍹 Escribe lo que deseas pedir")
-
-        elif texto == "comida":
-            enviar(numero, "🍽 Escribe tu pedido")
 
         else:
             items = procesar_pedido(numero, texto)
 
             if items:
-                enviar(numero, "✅ Agregado a tu pedido")
+                enviar(numero, "✅ Pedido agregado correctamente")
                 enviar(numero, resumen(numero))
-                botones(numero, "¿Deseas continuar?", [
-                    ("seguir", "➕ Agregar más"),
-                    ("pedido", "🧾 Ver pedido"),
-                    ("finalizar", "✅ Finalizar")
-                ])
+                enviar(numero, "¿Deseas agregar más o escribir 'finalizar'?")
             else:
-                enviar(numero, "❌ No entendí tu pedido")
+                enviar(numero, "❌ No entendí tu pedido, intenta de nuevo")
 
     except Exception as e:
         print("ERROR:", e)
@@ -281,5 +214,5 @@ def webhook():
     return "ok", 200
 
 # ===== RUN =====
-if __name__ == "_main_":
-    app.run(port=10000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
