@@ -12,13 +12,12 @@ TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 
-# 🔥 TU LOGO
 LOGO_URL = "https://i.ibb.co/MxLwfTvY/Whats-App-Image-2026-04-09-at-6-29-58-PM.jpg"
 
 usuarios = {}
 
 # =========================
-# MENÚ COMPLETO
+# MENÚ
 # =========================
 menu = {
     "camarones": {
@@ -42,72 +41,63 @@ menu = {
         "T-Bone": 250,
         "Rib Eye": 270
     },
-    "ceviches": {
-        "Ceviche de Pescado": 180,
-        "Ceviche de Camarón": 200
-    },
-    "aguachiles": {
-        "Aguachile Verde": 190,
-        "Aguachile Negro": 190,
-        "Aguachile Rojo": 190
-    },
 
-    # 🔥 BEBIDAS COMPLETAS
+    # 🔥 BEBIDAS CON SUBMENÚ
     "bebidas": {
-
-        # REFRESCOS
-        "Coca Cola 600ml": 30,
-        "Coca Cola Light 600ml": 30,
-        "Pepsi 600ml": 25,
-        "Sangría 600ml": 25,
-        "7UP 600ml": 25,
-
-        # AGUAS 1L
-        "Agua Horchata 1L": 35,
-        "Agua Jamaica 1L": 35,
-        "Agua Piña 1L": 35,
-        "Agua Limón 1L": 35,
-
-        # AGUAS 500ML
-        "Agua Horchata 500ml": 20,
-        "Agua Jamaica 500ml": 20,
-        "Agua Piña 500ml": 20,
-        "Agua Limón 500ml": 20,
-
-        # MICHELADAS
-        "Michelada Camarón 1L": 100,
-        "Michelada Clamato 1L": 80,
-        "Michelada Tamarindo 1L": 90,
-
-        # CERVEZAS
-        "Corona Extra": 40,
-        "Corona Light": 40,
-        "Corona Cero": 40,
-        "Tecate": 35,
-        "Tecate Light": 35,
-        "Indio": 30,
-        "Ultra": 30,
-        "Heineken 0.0": 35
+        "refrescos": {
+            "Coca Cola 600ml": 30,
+            "Coca Cola Light 600ml": 30,
+            "Pepsi 600ml": 25,
+            "Sangría 600ml": 25,
+            "7UP 600ml": 25
+        },
+        "aguas1L": {
+            "Agua Horchata 1L": 35,
+            "Agua Jamaica 1L": 35,
+            "Agua Piña 1L": 35,
+            "Agua Limón 1L": 35
+        },
+        "aguas500": {
+            "Agua Horchata 500ml": 20,
+            "Agua Jamaica 500ml": 20,
+            "Agua Piña 500ml": 20,
+            "Agua Limón 500ml": 20
+        },
+        "micheladas": {
+            "Michelada Camarón 1L": 100,
+            "Michelada Clamato 1L": 80,
+            "Michelada Tamarindo 1L": 90
+        },
+        "cervezas": {
+            "Corona Extra": 40,
+            "Corona Light": 40,
+            "Corona Cero": 40,
+            "Tecate": 35,
+            "Tecate Light": 35,
+            "Indio": 30,
+            "Ultra": 30,
+            "Heineken 0.0": 35
+        }
     }
 }
 
 # =========================
-# ENVIAR MENSAJE
+# ENVIAR
 # =========================
 def enviar(data):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {TOKEN},
+        "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
     }
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚ PRINCIPAL CON LOGO
+# MENÚ PRINCIPAL
 # =========================
-def menu_principal(numero, mostrar_logo=True):
+def menu_principal(numero, logo=True):
 
-    if mostrar_logo:
+    if logo:
         enviar({
             "messaging_product": "whatsapp",
             "to": numero,
@@ -133,7 +123,7 @@ def menu_principal(numero, mostrar_logo=True):
     })
 
 # =========================
-# MENÚ SEGUIR (SIN LOGO)
+# MENÚ SEGUIR
 # =========================
 def menu_seguir(numero):
     enviar({
@@ -158,6 +148,7 @@ def menu_seguir(numero):
 # =========================
 def mostrar_categorias(numero):
     rows = []
+
     for cat in menu:
         if cat != "bebidas":
             rows.append({"id": cat, "title": cat.capitalize()})
@@ -169,7 +160,44 @@ def mostrar_categorias(numero):
         "interactive": {
             "type": "list",
             "body": {"text": "Selecciona categoría"},
-            "action": {"button": "Ver opciones", "sections": [{"title": "Menú", "rows": rows}]}
+            "action": {
+                "button": "Ver opciones",
+                "sections": [{"title": "Menú", "rows": rows}]
+            }
+        }
+    })
+
+# =========================
+# SUBCATEGORÍAS BEBIDAS
+# =========================
+def mostrar_subcategorias_bebidas(numero):
+    nombres = {
+        "refrescos": "🥤 Refrescos",
+        "aguas1L": "💧 Aguas 1L",
+        "aguas500": "💧 Aguas 500ml",
+        "micheladas": "🍺 Micheladas",
+        "cervezas": "🍻 Cervezas"
+    }
+
+    rows = []
+
+    for key in menu["bebidas"]:
+        rows.append({
+            "id": f"beb_{key}",
+            "title": nombres[key]
+        })
+
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": "Selecciona tu bebida 🍹"},
+            "action": {
+                "button": "Ver opciones",
+                "sections": [{"title": "Bebidas", "rows": rows}]
+            }
         }
     })
 
@@ -194,12 +222,43 @@ def mostrar_productos(numero, categoria):
         "interactive": {
             "type": "list",
             "body": {"text": categoria.upper()},
-            "action": {"button": "Ver opciones", "sections": [{"title": "Productos", "rows": rows}]}
+            "action": {
+                "button": "Ver opciones",
+                "sections": [{"title": "Productos", "rows": rows}]
+            }
         }
     })
 
 # =========================
-# MOSTRAR PEDIDO
+# PRODUCTOS BEBIDAS
+# =========================
+def mostrar_productos_bebidas(numero, sub):
+    items = menu["bebidas"][sub]
+    rows = []
+
+    for nombre, precio in items.items():
+        rows.append({
+            "id": f"prod_{nombre}",
+            "title": nombre[:24],
+            "description": f"${precio}"
+        })
+
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": sub.upper()},
+            "action": {
+                "button": "Ver opciones",
+                "sections": [{"title": "Bebidas", "rows": rows}]
+            }
+        }
+    })
+
+# =========================
+# PEDIDO
 # =========================
 def mostrar_pedido(numero, u):
     if not u["pedido"]:
@@ -278,7 +337,6 @@ def webhook():
                     menu_seguir(numero)
                 return "ok", 200
 
-            # CANTIDAD
             if u.get("esperando_cantidad"):
                 cantidad = int(texto)
 
@@ -313,7 +371,7 @@ def webhook():
                     mostrar_categorias(numero)
 
                 elif id == "bebidas":
-                    mostrar_productos(numero, "bebidas")
+                    mostrar_subcategorias_bebidas(numero)
 
                 elif id == "pedido":
                     mostrar_pedido(numero, u)
@@ -333,12 +391,21 @@ def webhook():
                 if id in menu:
                     mostrar_productos(numero, id)
 
+                elif id.startswith("beb_"):
+                    sub = id.replace("beb_", "")
+                    mostrar_productos_bebidas(numero, sub)
+
                 elif id.startswith("prod_"):
                     nombre = id.replace("prod_", "")
 
                     for cat in menu:
-                        if nombre in menu[cat]:
-                            precio = menu[cat][nombre]
+                        if cat == "bebidas":
+                            for sub in menu["bebidas"]:
+                                if nombre in menu["bebidas"][sub]:
+                                    precio = menu["bebidas"][sub][nombre]
+                        else:
+                            if nombre in menu[cat]:
+                                precio = menu[cat][nombre]
 
                     u["producto"] = {"nombre": nombre, "precio": precio}
                     u["esperando_cantidad"] = True
