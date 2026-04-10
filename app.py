@@ -14,7 +14,7 @@ LOGO_URL = "https://i.ibb.co/MxLwfTvY/Whats-App-Image-2026-04-09-at-6-29-58-PM.j
 usuarios = {}
 
 # =========================
-# MENÚ
+# MENÚ (TUYO COMPLETO)
 # =========================
 menu = {
     "camarones": {
@@ -38,7 +38,6 @@ menu = {
         "T-Bone": 250,
         "Rib Eye": 270
     },
-
     "bebidas": {
         "refrescos": {
             "Coca Cola 600ml": 30,
@@ -89,7 +88,7 @@ def enviar(data):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚS
+# MENÚ PRINCIPAL
 # =========================
 def menu_principal(numero, logo=True):
     if logo:
@@ -139,15 +138,18 @@ def menu_seguir(numero):
 # PEDIDO
 # =========================
 def mostrar_pedido(numero, u):
-    texto = "🧾 Tu pedido:\n\n"
-    total = 0
+    if not u["pedido"]:
+        texto = "🧾 Tu pedido está vacío"
+    else:
+        texto = "🧾 Tu pedido:\n\n"
+        total = 0
 
-    for item in u["pedido"]:
-        subtotal = item["cantidad"] * item["precio"]
-        texto += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
-        total += subtotal
+        for item in u["pedido"]:
+            subtotal = item["cantidad"] * item["precio"]
+            texto += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
+            total += subtotal
 
-    texto += f"\n💰 Total: ${total}"
+        texto += f"\n💰 Total: ${total}"
 
     enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": texto}})
     acciones(numero)
@@ -206,7 +208,6 @@ def webhook():
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
 
-            # SALUDO
             if texto in ["hola", "menu", "inicio"]:
                 if not u["bienvenida"]:
                     menu_principal(numero, True)
@@ -215,49 +216,27 @@ def webhook():
                     menu_seguir(numero)
                 return "ok", 200
 
-            # CANTIDAD
-            if u.get("esperando_cantidad"):
-                cantidad = int(texto)
-
-                u["pedido"].append({
-                    "nombre": u["producto"]["nombre"],
-                    "precio": u["producto"]["precio"],
-                    "cantidad": cantidad
-                })
-
-                u["esperando_cantidad"] = False
-
-                enviar({
-                    "messaging_product": "whatsapp",
-                    "to": numero,
-                    "text": {"body": f"✅ {cantidad} {u['producto']['nombre']} agregado"}
-                })
-
-                mostrar_pedido(numero, u)
-                return "ok", 200
-
-            # =========================
-            # FLUJO FINALIZAR
-            # =========================
-
+            # 👤 NOMBRE
             if u.get("estado") == "nombre":
                 u["nombre"] = texto
                 u["estado"] = "direccion"
-                enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"📍 Dirección:"}})
+                enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "📍 Dirección:"}})
                 return "ok", 200
 
+            # 📍 DIRECCIÓN
             if u.get("estado") == "direccion":
                 u["direccion"] = texto
                 u["estado"] = "telefono"
-                enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"📞 Teléfono:"}})
+                enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "📞 Teléfono:"}})
                 return "ok", 200
 
+            # 📞 TELÉFONO + CONFIRMACIÓN
             if u.get("estado") == "telefono":
                 u["telefono"] = texto
 
-                folio = str(uuid.uuid4())[:8]
+                folio = str(uuid.uuid4())[:8].upper()
 
-                resumen = f"🧾 ORDEN #{folio}\n\n"
+                resumen = f"🧾 Pedido #{folio}\n\n"
                 total = 0
 
                 for item in u["pedido"]:
@@ -268,14 +247,14 @@ def webhook():
                 resumen += f"\n💰 Total: ${total}\n\n"
                 resumen += f"👤 {u['nombre']}\n📍 {u['direccion']}\n📞 {u['telefono']}"
 
-                enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":resumen}})
-                enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"✅ Pedido confirmado\n🙏 Gracias por tu compra"}})
+                enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": resumen}})
+                enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "✅ Pedido confirmado. ¡Gracias!"}})
 
                 usuarios[numero] = {"pedido": [], "bienvenida": True}
                 return "ok", 200
 
         # =========================
-        # BOTONES
+        # INTERACTIVOS
         # =========================
         if "interactive" in mensaje:
             inter = mensaje["interactive"]
@@ -285,19 +264,22 @@ def webhook():
 
                 if id == "pedido":
                     mostrar_pedido(numero, u)
-                    menu_seguir(numero)
 
                 elif id == "seguir":
                     menu_seguir(numero)
 
                 elif id == "vaciar":
                     u["pedido"] = []
-                    enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"🗑️ Carrito vacío"}})
+                    enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "🗑️ Carrito vacío"}})
                     menu_seguir(numero)
 
+                # 🔥 AQUÍ ESTÁ LA CLAVE
                 elif id == "finalizar":
-                    u["estado"] = "nombre"
-                    enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"👤 Nombre del cliente:"}})
+                    if not u["pedido"]:
+                        enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "⚠️ No hay pedido"}})
+                    else:
+                        u["estado"] = "nombre"
+                        enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "👤 Nombre del cliente:"}})
 
     except Exception as e:
         print("ERROR:", e)
