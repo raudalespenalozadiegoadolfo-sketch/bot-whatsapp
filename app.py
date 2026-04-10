@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import requests
 import os
 import uuid
@@ -6,11 +6,13 @@ import uuid
 app = Flask(__name__)
 
 # =========================
-# VARIABLES (CORREGIDO)
+# VARIABLES
 # =========================
 TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
+
+LOGO_URL = "https://i.ibb.co/MxLwfTvY/Whats-App-Image-2026-04-09-at-6-29-58-PM.jpg"
 
 usuarios = {}
 
@@ -49,11 +51,25 @@ menu = {
         "Aguachile Rojo": 190
     },
     "bebidas": {
+        "Corona Extra 355ml": 40,
+        "Corona Light 355ml": 40,
+        "Heineken 0.0": 40,
+        "Tecate": 35,
+        "Tecate Light": 35,
+        "Pacífico": 40,
+        "Corona Familiar": 90,
+        "Michelada Camarón": 100,
+        "Michelada Clásica": 80,
         "Coca Cola 600ml": 30,
         "Pepsi 600ml": 25,
         "7UP 600ml": 25,
         "Manzana 600ml": 25,
-        "Sprite 600ml": 30
+        "Sprite 600ml": 30,
+        "Agua Jamaica 1L": 30,
+        "Agua Horchata 1L": 30,
+        "Piña Colada": 100,
+        "Mojito": 80,
+        "Clericot": 90
     }
 }
 
@@ -69,9 +85,17 @@ def enviar(data):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚ PRINCIPAL
+# MENÚ PRINCIPAL (CON IMAGEN)
 # =========================
 def menu_principal(numero):
+
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "image",
+        "image": {"link": LOGO_URL}
+    })
+
     enviar({
         "messaging_product": "whatsapp",
         "to": numero,
@@ -90,7 +114,7 @@ def menu_principal(numero):
     })
 
 # =========================
-# MOSTRAR CATEGORÍAS
+# CATEGORÍAS
 # =========================
 def mostrar_categorias(numero):
     rows = []
@@ -110,13 +134,12 @@ def mostrar_categorias(numero):
     })
 
 # =========================
-# MOSTRAR PRODUCTOS
+# PRODUCTOS
 # =========================
 def mostrar_productos(numero, categoria):
-    items = menu[categoria]
     rows = []
 
-    for nombre, precio in items.items():
+    for nombre, precio in menu[categoria].items():
         rows.append({
             "id": f"prod_{nombre}",
             "title": nombre,
@@ -135,7 +158,7 @@ def mostrar_productos(numero, categoria):
     })
 
 # =========================
-# MOSTRAR PEDIDO
+# PEDIDO
 # =========================
 def mostrar_pedido(numero, u):
     if not u["pedido"]:
@@ -143,10 +166,12 @@ def mostrar_pedido(numero, u):
     else:
         texto = "🧾 Tu pedido:\n\n"
         total = 0
+
         for item in u["pedido"]:
             subtotal = item["cantidad"] * item["precio"]
             texto += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
             total += subtotal
+
         texto += f"\n💰 Total: ${total}"
 
     enviar({
@@ -156,7 +181,7 @@ def mostrar_pedido(numero, u):
     })
 
 # =========================
-# BOTONES CARRITO
+# BOTONES
 # =========================
 def acciones(numero):
     enviar({
@@ -182,7 +207,6 @@ def acciones(numero):
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
 
-    # VERIFICACIÓN
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
@@ -193,7 +217,6 @@ def webhook():
     try:
         value = data["entry"][0]["changes"][0]["value"]
 
-        # 🔥 CORRECCIÓN CLAVE
         if "messages" not in value:
             return "ok", 200
 
@@ -205,18 +228,14 @@ def webhook():
 
         u = usuarios[numero]
 
-        # =========================
         # TEXTO
-        # =========================
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
 
-            # MENÚ AUTOMÁTICO
             if texto in ["hola", "menu", "inicio"]:
                 menu_principal(numero)
                 return "ok", 200
 
-            # CANTIDAD
             if u.get("esperando_cantidad"):
                 cantidad = int(texto)
 
@@ -241,7 +260,7 @@ def webhook():
                 acciones(numero)
                 return "ok", 200
 
-            # DATOS CLIENTE
+            # DATOS
             if u.get("estado") == "nombre":
                 u["nombre"] = texto
                 u["estado"] = "direccion"
@@ -267,7 +286,7 @@ def webhook():
                     resumen += f"{item['cantidad']} {item['nombre']} - ${subtotal}\n"
                     total += subtotal
 
-                resumen += f"\nTotal: ${total}\n\n"
+                resumen += f"\n💰 Total: ${total}\n\n"
                 resumen += f"👤 {u['nombre']}\n📍 {u['direccion']}\n📞 {u['telefono']}"
 
                 enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": resumen}})
@@ -276,9 +295,7 @@ def webhook():
                 usuarios[numero] = {"pedido": []}
                 return "ok", 200
 
-        # =========================
-        # INTERACTIVOS
-        # =========================
+        # INTERACTIVO
         if "interactive" in mensaje:
             inter = mensaje["interactive"]
 
