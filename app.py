@@ -5,6 +5,9 @@ import uuid
 
 app = Flask(__name__)
 
+# =========================
+# VARIABLES (CORREGIDO)
+# =========================
 TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
@@ -14,10 +17,9 @@ usuarios = {}
 # =========================
 # MENÚ COMPLETO
 # =========================
-
 menu = {
     "camarones": {
-        "Camarones A la Diabla": 180,
+        "Camarones a la Diabla": 180,
         "Camarones Empanizados": 190,
         "Camarones al Ajo": 180,
         "Camarones al Ajillo": 180
@@ -51,16 +53,13 @@ menu = {
         "Pepsi 600ml": 25,
         "7UP 600ml": 25,
         "Manzana 600ml": 25,
-        "Sprite 600ml": 30,
-        "Agua Jamaica 1L": 30,
-        "Agua Horchata 1L": 30
+        "Sprite 600ml": 30
     }
 }
 
 # =========================
 # ENVIAR MENSAJE
 # =========================
-
 def enviar(data):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
     headers = {
@@ -72,7 +71,6 @@ def enviar(data):
 # =========================
 # MENÚ PRINCIPAL
 # =========================
-
 def menu_principal(numero):
     enviar({
         "messaging_product": "whatsapp",
@@ -94,14 +92,11 @@ def menu_principal(numero):
 # =========================
 # MOSTRAR CATEGORÍAS
 # =========================
-
 def mostrar_categorias(numero):
-    secciones = []
+    rows = []
     for cat in menu:
-        secciones.append({
-            "title": cat.upper(),
-            "rows": [{"id": cat, "title": cat.capitalize()}]
-        })
+        if cat != "bebidas":
+            rows.append({"id": cat, "title": cat.capitalize()})
 
     enviar({
         "messaging_product": "whatsapp",
@@ -110,14 +105,13 @@ def mostrar_categorias(numero):
         "interactive": {
             "type": "list",
             "body": {"text": "Selecciona categoría"},
-            "action": {"button": "Ver opciones", "sections": secciones}
+            "action": {"button": "Ver opciones", "sections": [{"title": "Menú", "rows": rows}]}
         }
     })
 
 # =========================
 # MOSTRAR PRODUCTOS
 # =========================
-
 def mostrar_productos(numero, categoria):
     items = menu[categoria]
     rows = []
@@ -135,15 +129,14 @@ def mostrar_productos(numero, categoria):
         "type": "interactive",
         "interactive": {
             "type": "list",
-            "body": {"text": f"{categoria.upper()}"},
-            "action": {"button": "Ver opciones", "sections": [{"title": "Menú", "rows": rows}]}
+            "body": {"text": categoria.upper()},
+            "action": {"button": "Ver opciones", "sections": [{"title": "Productos", "rows": rows}]}
         }
     })
 
 # =========================
 # MOSTRAR PEDIDO
 # =========================
-
 def mostrar_pedido(numero, u):
     if not u["pedido"]:
         texto = "🧾 Tu pedido está vacío"
@@ -163,9 +156,8 @@ def mostrar_pedido(numero, u):
     })
 
 # =========================
-# ACCIONES CARRITO
+# BOTONES CARRITO
 # =========================
-
 def acciones(numero):
     enviar({
         "messaging_product": "whatsapp",
@@ -187,9 +179,10 @@ def acciones(numero):
 # =========================
 # WEBHOOK
 # =========================
-
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+
+    # VERIFICACIÓN
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
@@ -198,21 +191,35 @@ def webhook():
     data = request.json
 
     try:
-        mensaje = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        value = data["entry"][0]["changes"][0]["value"]
+
+        # 🔥 CORRECCIÓN CLAVE
+        if "messages" not in value:
+            return "ok", 200
+
+        mensaje = value["messages"][0]
         numero = mensaje["from"]
 
         if numero not in usuarios:
-            usuarios[numero] = {"pedido": [], "estado": None}
+            usuarios[numero] = {"pedido": []}
 
         u = usuarios[numero]
 
+        # =========================
         # TEXTO
+        # =========================
         if "text" in mensaje:
-            texto = mensaje["text"]["body"]
+            texto = mensaje["text"]["body"].lower()
 
-            # CAPTURA CANTIDAD
+            # MENÚ AUTOMÁTICO
+            if texto in ["hola", "menu", "inicio"]:
+                menu_principal(numero)
+                return "ok", 200
+
+            # CANTIDAD
             if u.get("esperando_cantidad"):
                 cantidad = int(texto)
+
                 nombre = u["producto"]["nombre"]
                 precio = u["producto"]["precio"]
 
@@ -269,7 +276,9 @@ def webhook():
                 usuarios[numero] = {"pedido": []}
                 return "ok", 200
 
+        # =========================
         # INTERACTIVOS
+        # =========================
         if "interactive" in mensaje:
             inter = mensaje["interactive"]
 
@@ -305,6 +314,7 @@ def webhook():
 
                 elif id.startswith("prod_"):
                     nombre = id.replace("prod_", "")
+
                     for cat in menu:
                         if nombre in menu[cat]:
                             precio = menu[cat][nombre]
@@ -323,9 +333,6 @@ def webhook():
 
     return "ok", 200
 
-# =========================
-# RUN
-# =========================
 
 if __name__ == "__main__":
     app.run(port=5000)
