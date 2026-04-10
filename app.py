@@ -1,201 +1,204 @@
-import os
+from flask import Flask, request, jsonify
 import requests
-from flask import Flask, request
+import os
+import unicodedata
+import uuid
 
 app = Flask(__name__)
 
-TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
-PHONE_ID = os.getenv("PHONE_NUMBER_ID")
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+TOKEN = "TU_TOKEN"
+PHONE_ID = "TU_PHONE_ID"
+VERIFY_TOKEN = "123456"
 
-carritos = {}
-estado = {}
-temp = {}
-datos = {}
-contador_orden = 1
+# =========================
+# UTILIDADES
+# =========================
 
-# ===== MENÚ =====
+def limpiar(texto):
+    texto = texto.lower()
+    texto = ''.join(c for c in unicodedata.normalize('NFD', texto)
+                    if unicodedata.category(c) != 'Mn')
+    return texto
+
+def enviar(data):
+    url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "Content-Type": "application/json"
+    }
+    requests.post(url, headers=headers, json=data)
+
+# =========================
+# MENÚ COMPLETO
+# =========================
+
 menu = {
-    "comida": {
-        "camarones": {
-            "a la diabla": 180,
-            "empanizados": 190,
-            "al ajo": 180,
-            "al ajillo": 180
-        },
-        "pulpo": {
-            "a la diabla": 220,
-            "empanizado": 220,
-            "zarandeado": 220
-        },
-        "filete": {
-            "a la diabla": 160,
-            "empanizado": 170,
-            "al ajo": 170
-        },
-        "cocteles": {
-            "camaron": 190,
-            "pulpo": 200,
-            "callo": 250,
-            "mixto": 220
-        },
-        "aguachiles": {
-            "verde": 190,
-            "negro": 190,
-            "rojo": 190
-        },
-        "ceviches": {
-            "pescado": 180,
-            "camaron": 200
-        },
-        "cortes finos": {
-            "arrachera": 220,
-            "t-bone": 250,
-            "rib eye": 270
-        }
+    "camarones": {
+        "A la diabla": 180,
+        "Empanizados": 190,
+        "Al ajo": 180,
+        "Al ajillo": 180
     },
-    "bebidas": {
-        "cervezas": {
-            "corona extra": 40,
-            "corona light": 40,
-            "heineken cero": 40,
-            "tecate": 35,
-            "tecate light": 35,
-            "sol clamato": 30,
-            "indio": 35,
-            "ultra": 40,
-            "pacifico": 40
-        },
-        "micheladas": {
-            "camaron": 100,
-            "clamato": 80,
-            "tamarindo": 90
-        },
-        "refrescos": {
-            "coca cola": 30,
-            "coca light": 30,
-            "pepsi": 25,
-            "7 up": 25,
-            "manzana": 25,
-            "sprite": 30
-        },
-        "aguas 1lt": {
-            "arroz": 30,
-            "jamaica": 30,
-            "piña": 30,
-            "limon": 30,
-            "naranja": 30
-        },
-        "aguas 1/2lt": {
-            "arroz": 15,
-            "jamaica": 15,
-            "piña": 15,
-            "limon": 15,
-            "naranja": 15
-        },
-        "preparadas": {
-            "piñada": 80,
-            "piña colada": 100,
-            "mojito": 80,
-            "clerico": 90,
-            "margarita": 100,
-            "paloma": 85,
-            "rusa": 75
-        }
+    "pulpo": {
+        "A la diabla": 220,
+        "Empanizado": 220,
+        "Zarandeado": 220
+    },
+    "filete": {
+        "A la diabla": 160,
+        "Empanizado": 170,
+        "Al ajo": 170
+    },
+    "cortes finos": {
+        "Arrachera": 220,
+        "T-Bone": 250,
+        "Rib Eye": 270
+    },
+    "ceviche": {
+        "Pescado": 180,
+        "Camarón": 200
+    },
+    "aguachile": {
+        "Verde": 190,
+        "Rojo": 190,
+        "Negro": 190
     }
 }
 
-# ===== UTIL =====
-def enviar(numero, texto):
-    requests.post(
-        f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages",
-        headers={"Authorization": f"Bearer {TOKEN}"},
-        json={
-            "messaging_product": "whatsapp",
-            "to": numero,
-            "type": "text",
-            "text": {"body": texto}
-        }
-    )
+bebidas = {
+    "cervezas": {
+        "Corona extra": 40,
+        "Corona light": 40,
+        "Heineken cero": 40,
+        "Tecate": 35,
+        "Tecate light": 35,
+        "Indio": 35,
+        "Ultra": 40,
+        "Pacífico": 40
+    },
+    "refrescos": {
+        "Coca Cola": 30,
+        "Pepsi": 25,
+        "7UP": 25,
+        "Manzana": 25,
+        "Sprite": 30
+    }
+}
 
-def botones(numero, texto, opciones):
-    requests.post(
-        f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages",
-        headers={"Authorization": f"Bearer {TOKEN}"},
-        json={
-            "messaging_product": "whatsapp",
-            "to": numero,
-            "type": "interactive",
-            "interactive": {
-                "type": "button",
-                "body": {"text": texto},
-                "action": {
-                    "buttons": [
-                        {"type": "reply", "reply": {"id": o[0], "title": o[1]}}
-                        for o in opciones
-                    ]
+usuarios = {}
+
+# =========================
+# MENSAJES UI
+# =========================
+
+def menu_principal(numero):
+    data = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "header": {
+                "type": "image",
+                "image": {
+                    "link": "https://i.imgur.com/6Xb6K5K.jpg"
                 }
+            },
+            "body": {
+                "text": "👋 Bienvenido a Marisco Alegre 🦐\n¿Qué deseas pedir?"
+            },
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "comida", "title": "🍽️ Comida"}},
+                    {"type": "reply", "reply": {"id": "bebidas", "title": "🍹 Bebidas"}},
+                    {"type": "reply", "reply": {"id": "pedido", "title": "🧾 Pedido"}}
+                ]
             }
         }
-    )
+    }
+    enviar(data)
 
-def lista(numero, texto, opciones):
-    requests.post(
-        f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages",
-        headers={"Authorization": f"Bearer {TOKEN}"},
-        json={
-            "messaging_product": "whatsapp",
-            "to": numero,
-            "type": "interactive",
-            "interactive": {
-                "type": "list",
-                "body": {"text": texto},
-                "action": {
-                    "button": "Ver opciones",
-                    "sections": [{
-                        "title": "Menú",
-                        "rows": [{"id": o[0], "title": o[1]} for o in opciones]
-                    }]
-                }
+def lista(numero, titulo, opciones, tipo):
+    rows = []
+    for o in opciones:
+        rows.append({
+            "id": f"{tipo}_{o}",
+            "title": o[:24]
+        })
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": titulo},
+            "action": {
+                "button": "Ver opciones",
+                "sections": [{
+                    "title": "Opciones",
+                    "rows": rows
+                }]
             }
         }
-    )
+    }
+    enviar(data)
 
-# ===== CARRITO =====
-def agregar(numero, producto, precio, cantidad):
-    if numero not in carritos:
-        carritos[numero] = {}
-
-    if producto in carritos[numero]:
-        carritos[numero][producto]["cant"] += cantidad
-    else:
-        carritos[numero][producto] = {
-            "precio": precio,
-            "cant": cantidad
-        }
-
-def resumen(numero):
+def mostrar_pedido(numero, u):
+    texto = "🧾 Tu pedido:\n"
     total = 0
-    texto = "🧾 Tu pedido:\n\n"
 
-    for p, d in carritos.get(numero, {}).items():
-        sub = d["precio"] * d["cant"]
-        total += sub
-        texto += f"• {d['cant']} {p} - ${sub}\n"
+    resumen = {}
+
+    for item in u["pedido"]:
+        nombre = item["nombre"]
+        resumen.setdefault(nombre, {"cantidad": 0, "precio": item["precio"]})
+        resumen[nombre]["cantidad"] += 1
+
+    for nombre, data in resumen.items():
+        subtotal = data["cantidad"] * data["precio"]
+        total += subtotal
+        texto += f"• {data['cantidad']} {nombre} - ${subtotal}\n"
 
     texto += f"\n💵 Total: ${total}"
-    return texto
 
-# ===== WEBHOOK =====
-@app.route("/webhook", methods=["GET"])
-def verify():
-    if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-        return request.args.get("hub.challenge")
-    return "error", 403
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "text": {"body": texto}
+    })
 
-@app.route("/webhook", methods=["POST"])
+    acciones(numero)
+
+def acciones(numero):
+    data = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "¿Qué deseas hacer?"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "seguir", "title": "➕ Seguir"}},
+                    {"type": "reply", "reply": {"id": "finalizar", "title": "✅ Finalizar"}},
+                    {"type": "reply", "reply": {"id": "vaciar", "title": "🗑️ Vaciar"}}
+                ]
+            }
+        }
+    }
+    enviar(data)
+
+# =========================
+# WEBHOOK
+# =========================
+
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
-    global contador_orden
+    if request.method == "GET":
+        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return request.args.get("hub.challenge")
+        return "Error"
 
     data = request.json
 
@@ -203,129 +206,106 @@ def webhook():
         msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
         numero = msg["from"]
 
+        if numero not in usuarios:
+            usuarios[numero] = {"pedido": [], "estado": None}
+
+        u = usuarios[numero]
+
+        # TEXTO
         if "text" in msg:
-            texto = msg["text"]["body"].lower()
-        else:
-            texto = msg["interactive"].get("list_reply", {}).get("id") or \
-                    msg["interactive"].get("button_reply", {}).get("id")
+            texto = limpiar(msg["text"]["body"])
 
-    except:
-        return "ok", 200
+            if texto == "hola":
+                menu_principal(numero)
 
-    # ===== MENÚ PRINCIPAL =====
-    if texto in ["hola", "menu", "seguir"]:
-        botones(numero, "👋 ¿Qué deseas pedir?", [
-            ("comida", "🍽 Comida"),
-            ("bebidas", "🍹 Bebidas"),
-            ("pedido", "🧾 Ver pedido")
-        ])
+            elif texto.isdigit() and u["estado"]:
+                cantidad = int(texto)
+                nombre = u["estado"]["nombre"]
+                precio = u["estado"]["precio"]
 
-    # ===== CATEGORÍAS =====
-    elif texto in menu:
-        lista(numero, "Selecciona categoría:", [
-            (sub, sub.title()) for sub in menu[texto]
-        ])
-        estado[numero] = texto
+                for _ in range(cantidad):
+                    u["pedido"].append({"nombre": nombre, "precio": precio})
 
-    # ===== SUBCATEGORÍA =====
-    elif estado.get(numero) in menu and texto in menu[estado[numero]]:
-        cat = estado[numero]
+                enviar({
+                    "messaging_product": "whatsapp",
+                    "to": numero,
+                    "text": {"body": f"✅ {cantidad} {nombre} agregado"}
+                })
 
-        lista(numero, texto.title(), [
-            (f"{cat}|{texto}|{p}", f"{p.title()} ${menu[cat][texto][p]}")
-            for p in menu[cat][texto]
-        ])
+                mostrar_pedido(numero, u)
+                u["estado"] = None
 
-    # ===== PRODUCTO =====
-    elif "|" in texto:
-        cat, sub, prod = texto.split("|")
-        precio = menu[cat][sub][prod]
+        # BOTONES
+        if "interactive" in msg:
+            btn = msg["interactive"]
 
-        nombre = f"{sub.title()} {prod.title()}"
+            if btn["type"] == "button_reply":
+                id = btn["button_reply"]["id"]
 
-        temp[numero] = (nombre, precio)
-        estado[numero] = "cantidad"
+                if id == "comida":
+                    lista(numero, "🍽️ Selecciona categoría:", list(menu.keys()), "cat")
 
-        enviar(numero, f"¿Cuántos {nombre} necesitas?")
+                elif id == "bebidas":
+                    lista(numero, "🍹 Selecciona bebida:", list(bebidas.keys()), "beb")
 
-    # ===== CANTIDAD =====
-    elif estado.get(numero) == "cantidad":
-        try:
-            cantidad = int(texto)
-            nombre, precio = temp[numero]
+                elif id == "pedido":
+                    mostrar_pedido(numero, u)
 
-            agregar(numero, nombre, precio, cantidad)
+                elif id == "seguir":
+                    menu_principal(numero)
 
-            enviar(numero, f"✅ {cantidad} {nombre} agregado")
-            enviar(numero, resumen(numero))
+                elif id == "vaciar":
+                    u["pedido"] = []
+                    enviar({
+                        "messaging_product": "whatsapp",
+                        "to": numero,
+                        "text": {"body": "🗑️ Pedido vaciado"}
+                    })
 
-            botones(numero, "¿Qué deseas hacer?", [
-                ("seguir", "➕ Seguir"),
-                ("finalizar", "✅ Finalizar"),
-                ("vaciar", "🗑 Vaciar")
-            ])
+                elif id == "finalizar":
+                    u["estado"] = "nombre"
+                    enviar({
+                        "messaging_product": "whatsapp",
+                        "to": numero,
+                        "text": {"body": "👤 Nombre:"}
+                    })
 
-            estado[numero] = None
+            elif btn["type"] == "list_reply":
+                id = btn["list_reply"]["id"]
 
-        except:
-            enviar(numero, "❌ Escribe un número válido")
+                if id.startswith("cat_"):
+                    cat = id.replace("cat_", "")
+                    lista(numero, cat, list(menu[cat].keys()), "prod")
 
-    # ===== VACIAR =====
-    elif texto == "vaciar":
-        carritos[numero] = {}
-        enviar(numero, "🗑 Pedido vacío")
+                elif id.startswith("prod_"):
+                    prod = id.replace("prod_", "")
 
-    # ===== FINALIZAR =====
-    elif texto == "finalizar":
-        estado[numero] = "nombre"
-        enviar(numero, "🧑 Nombre del cliente:")
+                    for cat in menu:
+                        if prod in menu[cat]:
+                            precio = menu[cat][prod]
+                            nombre = f"{cat.capitalize()} {prod}"
 
-    elif estado.get(numero) == "nombre":
-        datos[numero] = {"nombre": texto}
-        estado[numero] = "direccion"
-        enviar(numero, "📍 Dirección:")
+                            u["estado"] = {
+                                "nombre": nombre,
+                                "precio": precio
+                            }
 
-    elif estado.get(numero) == "direccion":
-        datos[numero]["direccion"] = texto
-        estado[numero] = "telefono"
-        enviar(numero, "📞 Teléfono:")
+                            enviar({
+                                "messaging_product": "whatsapp",
+                                "to": numero,
+                                "text": {
+                                    "body": f"¿Cuántos {nombre} necesitas?"
+                                }
+                            })
 
-    elif estado.get(numero) == "telefono":
-        datos[numero]["telefono"] = texto
+    except Exception as e:
+        print("ERROR:", e)
 
-        orden = f"ORD-{str(contador_orden).zfill(4)}"
-        contador_orden += 1
+    return "ok"
 
-        datos[numero]["orden"] = orden
-
-        enviar(numero, f"🧾 Orden: {orden}")
-        enviar(numero, resumen(numero))
-
-        botones(numero, "Confirmar pedido", [
-            ("confirmar", "✅ Confirmar")
-        ])
-
-        estado[numero] = "confirmar"
-
-    elif texto == "confirmar":
-        info = datos[numero]
-
-        enviar(numero,
-               f"✅ Pedido confirmado\n\n"
-               f"🧾 {info['orden']}\n"
-               f"👤 {info['nombre']}\n"
-               f"📍 {info['direccion']}\n"
-               f"📞 {info['telefono']}")
-
-        enviar(numero, "🙏 Gracias por su preferencia")
-
-        estado[numero] = None
-
-    elif "gracias" in texto:
-        enviar(numero, "🙏 Gracias a usted por su preferencia")
-
-    return "ok", 200
-
+# =========================
+# MAIN
+# =========================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run()
