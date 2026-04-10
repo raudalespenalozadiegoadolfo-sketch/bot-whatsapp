@@ -17,67 +17,77 @@ LOGO_URL = "https://i.ibb.co/MxLwfTvY/Whats-App-Image-2026-04-09-at-6-29-58-PM.j
 usuarios = {}
 
 # =========================
-# MENÚ
+# MENÚ COMPLETO
 # =========================
 menu = {
+
+    # 🍽️ COMIDA
     "camarones": {
         "Camarones a la Diabla": 180,
         "Camarones Empanizados": 190,
         "Camarones al Ajo": 180,
         "Camarones al Ajillo": 180
     },
+
     "pulpo": {
         "Pulpo a la Diabla": 220,
         "Pulpo Empanizado": 220,
         "Pulpo Zarandeado": 220
     },
+
     "filete": {
         "Filete a la Diabla": 160,
         "Filete Empanizado": 170,
         "Filete al Ajo": 170
     },
+
     "cortes": {
         "Arrachera": 220,
         "T-Bone": 250,
         "Rib Eye": 270
     },
+
     "ceviches": {
         "Ceviche de Pescado": 180,
         "Ceviche de Camarón": 200
     },
+
     "aguachiles": {
         "Aguachile Verde": 190,
         "Aguachile Negro": 190,
         "Aguachile Rojo": 190
     },
 
-    # SUBMENÚ BEBIDAS
-    "cervezas": {
-        "Corona Extra 355ml": 40,
-        "Corona Light 355ml": 40,
-        "Tecate": 35,
-        "Pacífico": 40
-    },
-    "refrescos": {
+    # 🍹 BEBIDAS (COMPLETO)
+    "bebidas": {
+        # Refrescos
         "Coca Cola 600ml": 30,
         "Pepsi 600ml": 25,
         "7UP 600ml": 25,
         "Manzana 600ml": 25,
-        "Sprite 600ml": 30
-    },
-    "aguas": {
+        "Sprite 600ml": 30,
+
+        # Aguas frescas
+        "Agua Horchata 1L": 30,
         "Agua Jamaica 1L": 30,
-        "Agua Horchata 1L": 30
-    },
-    "preparadas": {
-        "Piña Colada": 100,
-        "Mojito": 80,
-        "Clericot": 90
+        "Agua Tamarindo 1L": 30,
+
+        # Cervezas
+        "Corona": 40,
+        "Corona Light": 40,
+        "Modelo Especial": 45,
+        "Negra Modelo": 45,
+        "Pacífico": 45,
+
+        # Preparadas
+        "Michelada": 60,
+        "Chelada": 55,
+        "Cerveza preparada especial": 70
     }
 }
 
 # =========================
-# ENVIAR MENSAJE
+# ENVIAR
 # =========================
 def enviar(data):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
@@ -88,7 +98,7 @@ def enviar(data):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚ PRINCIPAL
+# BIENVENIDA (CON LOGO)
 # =========================
 def menu_principal(numero):
 
@@ -117,13 +127,34 @@ def menu_principal(numero):
     })
 
 # =========================
-# CATEGORÍAS COMIDA
+# MENÚ SIMPLE (SIN LOGO)
+# =========================
+def menu_simple(numero):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "¿Qué deseas añadir?"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "comida", "title": "🍽️ Comida"}},
+                    {"type": "reply", "reply": {"id": "bebidas", "title": "🍹 Bebidas"}},
+                    {"type": "reply", "reply": {"id": "pedido", "title": "🧾 Pedido"}}
+                ]
+            }
+        }
+    })
+
+# =========================
+# CATEGORÍAS
 # =========================
 def mostrar_categorias(numero):
     rows = []
 
     for cat in menu:
-        if cat not in ["cervezas", "refrescos", "aguas", "preparadas"]:
+        if cat != "bebidas":
             rows.append({"id": cat, "title": cat.capitalize()})
 
     enviar({
@@ -133,38 +164,7 @@ def mostrar_categorias(numero):
         "interactive": {
             "type": "list",
             "body": {"text": "Selecciona categoría"},
-            "action": {
-                "button": "Ver opciones",
-                "sections": [{"title": "Menú", "rows": rows}]
-            }
-        }
-    })
-
-# =========================
-# SUBMENÚ BEBIDAS
-# =========================
-def mostrar_bebidas(numero):
-    enviar({
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": "Selecciona tu bebida 🍹"},
-            "action": {
-                "button": "Ver opciones",
-                "sections": [
-                    {
-                        "title": "Bebidas",
-                        "rows": [
-                            {"id": "cervezas", "title": "🍺 Cervezas"},
-                            {"id": "refrescos", "title": "🥤 Refrescos"},
-                            {"id": "aguas", "title": "💧 Aguas"},
-                            {"id": "preparadas", "title": "🍹 Preparadas"}
-                        ]
-                    }
-                ]
-            }
+            "action": {"button": "Ver opciones", "sections": [{"title": "Menú", "rows": rows}]}
         }
     })
 
@@ -172,6 +172,7 @@ def mostrar_bebidas(numero):
 # PRODUCTOS
 # =========================
 def mostrar_productos(numero, categoria):
+
     rows = []
 
     for nombre, precio in menu[categoria].items():
@@ -188,10 +189,7 @@ def mostrar_productos(numero, categoria):
         "interactive": {
             "type": "list",
             "body": {"text": categoria.upper()},
-            "action": {
-                "button": "Ver opciones",
-                "sections": [{"title": "Productos", "rows": rows}]
-            }
+            "action": {"button": "Ver opciones", "sections": [{"title": "Opciones", "rows": rows}]}
         }
     })
 
@@ -199,6 +197,7 @@ def mostrar_productos(numero, categoria):
 # PEDIDO
 # =========================
 def mostrar_pedido(numero, u):
+
     if not u["pedido"]:
         texto = "🧾 Tu pedido está vacío"
     else:
@@ -210,7 +209,7 @@ def mostrar_pedido(numero, u):
             texto += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
             total += subtotal
 
-        texto += f"\n💰 Total: ${total:,}"
+        texto += f"\n💰 Total: ${total}"
 
     enviar({
         "messaging_product": "whatsapp",
@@ -219,7 +218,7 @@ def mostrar_pedido(numero, u):
     })
 
 # =========================
-# BOTONES
+# ACCIONES
 # =========================
 def acciones(numero):
     enviar({
@@ -266,7 +265,9 @@ def webhook():
 
         u = usuarios[numero]
 
+        # =========================
         # TEXTO
+        # =========================
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
 
@@ -274,31 +275,14 @@ def webhook():
                 menu_principal(numero)
                 return "ok", 200
 
-            if texto in ["gracias"]:
-                enviar({
-                    "messaging_product": "whatsapp",
-                    "to": numero,
-                    "text": {"body": "🙏 Gracias a usted por su preferencia"}
-                })
-                return "ok", 200
-
             if u.get("esperando_cantidad"):
-                try:
-                    cantidad = int(texto)
-                except:
-                    enviar({
-                        "messaging_product": "whatsapp",
-                        "to": numero,
-                        "text": {"body": "❌ Escribe un número válido"}
-                    })
-                    return "ok", 200
+                cantidad = int(texto)
 
-                nombre = u["producto"]["nombre"]
-                precio = u["producto"]["precio"]
+                producto = u["producto"]
 
                 u["pedido"].append({
-                    "nombre": nombre,
-                    "precio": precio,
+                    "nombre": producto["nombre"],
+                    "precio": producto["precio"],
                     "cantidad": cantidad
                 })
 
@@ -307,14 +291,13 @@ def webhook():
                 enviar({
                     "messaging_product": "whatsapp",
                     "to": numero,
-                    "text": {"body": f"✅ {cantidad} {nombre} agregado"}
+                    "text": {"body": f"✅ {cantidad} {producto['nombre']} agregado"}
                 })
 
                 mostrar_pedido(numero, u)
                 acciones(numero)
                 return "ok", 200
 
-            # DATOS
             if u.get("estado") == "nombre":
                 u["nombre"] = texto
                 u["estado"] = "direccion"
@@ -328,7 +311,6 @@ def webhook():
                 return "ok", 200
 
             if u.get("estado") == "telefono":
-                u["telefono"] = texto
 
                 orden = str(uuid.uuid4())[:8]
 
@@ -340,18 +322,20 @@ def webhook():
                     resumen += f"{item['cantidad']} {item['nombre']} - ${subtotal}\n"
                     total += subtotal
 
-                resumen += f"\n💰 Total: ${total:,}\n\n"
-                resumen += f"👤 {u['nombre']}\n📍 {u['direccion']}\n📞 {u['telefono']}"
+                resumen += f"\n💰 Total: ${total}\n\n"
+                resumen += f"👤 {u['nombre']}\n📍 {u['direccion']}\n📞 {texto}"
 
                 enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": resumen}})
                 enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "🙏 Gracias por su preferencia"}})
 
                 usuarios[numero] = {"pedido": []}
-                menu_principal(numero)
                 return "ok", 200
 
-        # INTERACTIVO
+        # =========================
+        # INTERACTIVOS
+        # =========================
         if "interactive" in mensaje:
+
             inter = mensaje["interactive"]
 
             if inter["type"] == "button_reply":
@@ -361,30 +345,32 @@ def webhook():
                     mostrar_categorias(numero)
 
                 elif id == "bebidas":
-                    mostrar_bebidas(numero)
+                    mostrar_productos(numero, "bebidas")
 
                 elif id == "pedido":
                     mostrar_pedido(numero, u)
 
                 elif id == "seguir":
-                    menu_principal(numero)
+                    menu_simple(numero)
 
                 elif id == "vaciar":
                     u["pedido"] = []
                     enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "🗑️ Carrito vacío"}})
-                    menu_principal(numero)
+                    menu_simple(numero)
 
                 elif id == "finalizar":
                     u["estado"] = "nombre"
                     enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "👤 Nombre del cliente:"}})
 
             elif inter["type"] == "list_reply":
+
                 id = inter["list_reply"]["id"]
 
                 if id in menu:
                     mostrar_productos(numero, id)
 
                 elif id.startswith("prod_"):
+
                     nombre = id.replace("prod_", "")
 
                     for cat in menu:
