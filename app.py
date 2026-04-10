@@ -2,7 +2,6 @@ from flask import Flask, request
 import requests
 import os
 import unicodedata
-import uuid
 
 app = Flask(__name__)
 
@@ -29,27 +28,88 @@ def enviar(data):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚ
+# MENÚ COMPLETO
 # =========================
 
 menu = {
-    "camarones": {
-        "A la diabla": 180,
-        "Empanizados": 190,
-        "Al ajo": 180,
-        "Al ajillo": 180
+    "comida": {
+        "Camarones": {
+            "Camarones a la diabla": 180,
+            "Camarones empanizados": 190,
+            "Camarones al ajo": 180,
+            "Camarones al ajillo": 180
+        },
+        "Pulpo": {
+            "Pulpo a la diabla": 220,
+            "Pulpo empanizado": 220,
+            "Pulpo zarandeado": 220
+        },
+        "Filete": {
+            "Filete a la diabla": 160,
+            "Filete empanizado": 170,
+            "Filete al ajo": 170
+        },
+        "Cortes Finos": {
+            "Arrachera": 220,
+            "T-Bone": 250,
+            "Rib Eye": 270
+        },
+        "Ceviches": {
+            "Ceviche pescado": 180,
+            "Ceviche camaron": 200
+        },
+        "Aguachiles": {
+            "Aguachile verde": 190,
+            "Aguachile rojo": 190,
+            "Aguachile negro": 190
+        }
     },
-    "filete": {
-        "A la diabla": 160,
-        "Empanizado": 170,
-        "Al ajo": 170
+    "bebidas": {
+        "Cervezas": {
+            "Corona Extra": 40,
+            "Corona Light": 40,
+            "Heineken Cero": 40,
+            "Tecate": 35,
+            "Tecate Light": 35,
+            "Sol Clamato": 30,
+            "Indio": 35,
+            "Ultra": 40,
+            "Pacifico": 40
+        },
+        "Micheladas": {
+            "Michelada Camaron": 100,
+            "Michelada Clamato": 80,
+            "Michelada Tamarindo": 90
+        },
+        "Refrescos": {
+            "Coca Cola": 30,
+            "Pepsi": 25,
+            "7UP": 25,
+            "Manzana": 25,
+            "Sprite": 30,
+            "Coca Light": 30
+        },
+        "Aguas 1L": {
+            "Agua arroz 1L": 30,
+            "Agua jamaica 1L": 30,
+            "Agua piña 1L": 30,
+            "Agua limon 1L": 30,
+            "Agua naranja 1L": 30
+        },
+        "Aguas 1/2L": {
+            "Agua arroz 1/2L": 15,
+            "Agua jamaica 1/2L": 15,
+            "Agua piña 1/2L": 15,
+            "Agua limon 1/2L": 15,
+            "Agua naranja 1/2L": 15
+        }
     }
 }
 
 usuarios = {}
 
 # =========================
-# UI
+# INTERFACES
 # =========================
 
 def menu_principal(numero):
@@ -62,8 +122,7 @@ def menu_principal(numero):
             "header": {
                 "type": "image",
                 "image": {
-                    # 🔥 CAMBIA ESTA IMAGEN SI QUIERES
-                    "link": "https://images.unsplash.com/photo-1559847844-5315695dadae"
+                    "link": "https://i.ibb.co/MxLwfTvY/Whats-App-Image-2026-04-09-at-6-29-58-PM.jpg"
                 }
             },
             "body": {
@@ -72,6 +131,7 @@ def menu_principal(numero):
             "action": {
                 "buttons": [
                     {"type": "reply", "reply": {"id": "comida", "title": "🍽️ Comida"}},
+                    {"type": "reply", "reply": {"id": "bebidas", "title": "🍹 Bebidas"}},
                     {"type": "reply", "reply": {"id": "pedido", "title": "🧾 Pedido"}}
                 ]
             }
@@ -96,7 +156,7 @@ def lista(numero, titulo, opciones, tipo):
             "action": {
                 "button": "Ver opciones",
                 "sections": [{
-                    "title": "Opciones",
+                    "title": "Menú",
                     "rows": rows
                 }]
             }
@@ -132,19 +192,15 @@ def mostrar_pedido(numero, u):
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
         return "error"
 
     data = request.json
-    print("DATA:", data)
 
-    # 🔥 SOLUCIÓN ERROR 'messages'
     try:
-        if "entry" not in data:
-            return "ok"
-
         cambios = data["entry"][0]["changes"][0]["value"]
 
         if "messages" not in cambios:
@@ -155,8 +211,6 @@ def webhook():
 
     except:
         return "ok"
-
-    # =========================
 
     if numero not in usuarios:
         usuarios[numero] = {"pedido": [], "estado": None}
@@ -170,74 +224,60 @@ def webhook():
         if texto == "hola":
             menu_principal(numero)
 
-        elif texto.isdigit() and isinstance(u["estado"], dict):
+        elif texto.isdigit() and u["estado"]:
             cantidad = int(texto)
-            nombre = u["estado"]["nombre"]
-            precio = u["estado"]["precio"]
 
             for _ in range(cantidad):
-                u["pedido"].append({
-                    "nombre": nombre,
-                    "precio": precio
-                })
+                u["pedido"].append(u["estado"])
 
             enviar({
                 "messaging_product": "whatsapp",
                 "to": numero,
-                "text": {"body": f"✅ {cantidad} {nombre} agregado"}
+                "text": {"body": f"✅ {cantidad} {u['estado']['nombre']} agregado"}
             })
 
             mostrar_pedido(numero, u)
             u["estado"] = None
 
-    # BOTONES / LISTAS
+    # INTERACTIVO
     if "interactive" in msg:
         inter = msg["interactive"]
 
         if inter["type"] == "button_reply":
             id = inter["button_reply"]["id"]
 
-            if id == "comida":
-                lista(numero, "Selecciona categoría:", list(menu.keys()), "cat")
+            if id in ["comida", "bebidas"]:
+                lista(numero, "Selecciona categoría:", menu[id].keys(), id)
 
             elif id == "pedido":
                 mostrar_pedido(numero, u)
 
         elif inter["type"] == "list_reply":
             id = inter["list_reply"]["id"]
+            tipo, nombre = id.split("_", 1)
 
-            # CATEGORÍA
-            if id.startswith("cat_"):
-                cat = id.replace("cat_", "")
-                lista(numero, cat, list(menu[cat].keys()), "prod")
+            if tipo in ["comida", "bebidas"]:
+                lista(numero, nombre, menu[tipo][nombre].keys(), f"prod|{tipo}|{nombre}")
 
-            # PRODUCTO
-            elif id.startswith("prod_"):
-                prod = id.replace("prod_", "")
+            elif tipo.startswith("prod|"):
+                _, cat, sub = tipo.split("|")
 
-                # 🔥 SOLUCIÓN BUG DUPLICADO
-                for cat in menu:
-                    if prod in menu[cat]:
-                        precio = menu[cat][prod]
-                        nombre = f"{cat.capitalize()} {prod}"
+                precio = menu[cat][sub][nombre]
 
-                        u["estado"] = {
-                            "nombre": nombre,
-                            "precio": precio
-                        }
+                u["estado"] = {
+                    "nombre": nombre,
+                    "precio": precio
+                }
 
-                        enviar({
-                            "messaging_product": "whatsapp",
-                            "to": numero,
-                            "text": {
-                                "body": f"¿Cuántos {nombre} necesitas?"
-                            }
-                        })
-                        break  # 👈 ESTO ARREGLA EL DOBLE MENSAJE
+                enviar({
+                    "messaging_product": "whatsapp",
+                    "to": numero,
+                    "text": {
+                        "body": f"¿Cuántos {nombre} necesitas?"
+                    }
+                })
 
     return "ok"
-
-# =========================
 
 if __name__ == "__main__":
     app.run()
