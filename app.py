@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 
 usuarios = {}
 
