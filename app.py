@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import requests
 import os
 import unicodedata
@@ -6,9 +6,13 @@ import uuid
 
 app = Flask(__name__)
 
-TOKEN = "TU_TOKEN"
-PHONE_ID = "TU_PHONE_ID"
-VERIFY_TOKEN = "123456"
+# =========================
+# CONFIG (RENDER)
+# =========================
+
+TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+PHONE_ID = os.getenv("PHONE_NUMBER_ID")
+VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 
 # =========================
 # UTILIDADES
@@ -92,7 +96,7 @@ usuarios = {}
 # =========================
 
 def menu_principal(numero):
-    data = {
+    enviar({
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "interactive",
@@ -115,8 +119,7 @@ def menu_principal(numero):
                 ]
             }
         }
-    }
-    enviar(data)
+    })
 
 def lista(numero, titulo, opciones, tipo):
     rows = []
@@ -126,7 +129,7 @@ def lista(numero, titulo, opciones, tipo):
             "title": o[:24]
         })
 
-    data = {
+    enviar({
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "interactive",
@@ -141,13 +144,11 @@ def lista(numero, titulo, opciones, tipo):
                 }]
             }
         }
-    }
-    enviar(data)
+    })
 
 def mostrar_pedido(numero, u):
     texto = "🧾 Tu pedido:\n"
     total = 0
-
     resumen = {}
 
     for item in u["pedido"]:
@@ -171,7 +172,7 @@ def mostrar_pedido(numero, u):
     acciones(numero)
 
 def acciones(numero):
-    data = {
+    enviar({
         "messaging_product": "whatsapp",
         "to": numero,
         "type": "interactive",
@@ -186,8 +187,7 @@ def acciones(numero):
                 ]
             }
         }
-    }
-    enviar(data)
+    })
 
 # =========================
 # WEBHOOK
@@ -201,6 +201,7 @@ def webhook():
         return "Error"
 
     data = request.json
+    print("DATA:", data)
 
     try:
         msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
@@ -218,7 +219,7 @@ def webhook():
             if texto == "hola":
                 menu_principal(numero)
 
-            elif texto.isdigit() and u["estado"]:
+            elif texto.isdigit() and isinstance(u["estado"], dict):
                 cantidad = int(texto)
                 nombre = u["estado"]["nombre"]
                 precio = u["estado"]["precio"]
@@ -235,12 +236,38 @@ def webhook():
                 mostrar_pedido(numero, u)
                 u["estado"] = None
 
-        # BOTONES
-        if "interactive" in msg:
-            btn = msg["interactive"]
+            elif u["estado"] == "nombre":
+                u["nombre"] = texto
+                u["estado"] = "direccion"
+                enviar({"messaging_product": "whatsapp", "to": numero,
+                        "text": {"body": "📍 Dirección:"}})
 
-            if btn["type"] == "button_reply":
-                id = btn["button_reply"]["id"]
+            elif u["estado"] == "direccion":
+                u["direccion"] = texto
+                u["estado"] = "telefono"
+                enviar({"messaging_product": "whatsapp", "to": numero,
+                        "text": {"body": "📞 Teléfono:"}})
+
+            elif u["estado"] == "telefono":
+                u["telefono"] = texto
+                u["estado"] = None
+
+                orden = str(uuid.uuid4())[:8]
+
+                enviar({
+                    "messaging_product": "whatsapp",
+                    "to": numero,
+                    "text": {
+                        "body": f"📦 Orden #{orden}\n\n👤 {u['nombre']}\n📍 {u['direccion']}\n📞 {u['telefono']}\n\n¿Confirmar pedido?"
+                    }
+                })
+
+        # INTERACTIVO
+        if "interactive" in msg:
+            inter = msg["interactive"]
+
+            if inter["type"] == "button_reply":
+                id = inter["button_reply"]["id"]
 
                 if id == "comida":
                     lista(numero, "🍽️ Selecciona categoría:", list(menu.keys()), "cat")
@@ -256,22 +283,16 @@ def webhook():
 
                 elif id == "vaciar":
                     u["pedido"] = []
-                    enviar({
-                        "messaging_product": "whatsapp",
-                        "to": numero,
-                        "text": {"body": "🗑️ Pedido vaciado"}
-                    })
+                    enviar({"messaging_product": "whatsapp", "to": numero,
+                            "text": {"body": "🗑️ Pedido vaciado"}})
 
                 elif id == "finalizar":
                     u["estado"] = "nombre"
-                    enviar({
-                        "messaging_product": "whatsapp",
-                        "to": numero,
-                        "text": {"body": "👤 Nombre:"}
-                    })
+                    enviar({"messaging_product": "whatsapp", "to": numero,
+                            "text": {"body": "👤 Nombre:"}})
 
-            elif btn["type"] == "list_reply":
-                id = btn["list_reply"]["id"]
+            elif inter["type"] == "list_reply":
+                id = inter["list_reply"]["id"]
 
                 if id.startswith("cat_"):
                     cat = id.replace("cat_", "")
@@ -303,8 +324,6 @@ def webhook():
 
     return "ok"
 
-# =========================
-# MAIN
 # =========================
 
 if __name__ == "__main__":
