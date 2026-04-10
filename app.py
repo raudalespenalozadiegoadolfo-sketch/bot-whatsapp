@@ -5,9 +5,6 @@ import uuid
 
 app = Flask(__name__)
 
-# =========================
-# VARIABLES
-# =========================
 TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
@@ -42,7 +39,6 @@ menu = {
         "Rib Eye": 270
     },
 
-    # 🔥 BEBIDAS CON SUBMENÚ
     "bebidas": {
         "refrescos": {
             "Coca Cola 600ml": 30,
@@ -93,10 +89,9 @@ def enviar(data):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚ PRINCIPAL
+# MENÚS
 # =========================
 def menu_principal(numero, logo=True):
-
     if logo:
         enviar({
             "messaging_product": "whatsapp",
@@ -122,9 +117,6 @@ def menu_principal(numero, logo=True):
         }
     })
 
-# =========================
-# MENÚ SEGUIR
-# =========================
 def menu_seguir(numero):
     enviar({
         "messaging_product": "whatsapp",
@@ -144,135 +136,18 @@ def menu_seguir(numero):
     })
 
 # =========================
-# CATEGORÍAS
-# =========================
-def mostrar_categorias(numero):
-    rows = []
-
-    for cat in menu:
-        if cat != "bebidas":
-            rows.append({"id": cat, "title": cat.capitalize()})
-
-    enviar({
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": "Selecciona categoría"},
-            "action": {
-                "button": "Ver opciones",
-                "sections": [{"title": "Menú", "rows": rows}]
-            }
-        }
-    })
-
-# =========================
-# SUBCATEGORÍAS BEBIDAS
-# =========================
-def mostrar_subcategorias_bebidas(numero):
-    nombres = {
-        "refrescos": "🥤 Refrescos",
-        "aguas1L": "💧 Aguas 1L",
-        "aguas500": "💧 Aguas 500ml",
-        "micheladas": "🍺 Micheladas",
-        "cervezas": "🍻 Cervezas"
-    }
-
-    rows = []
-
-    for key in menu["bebidas"]:
-        rows.append({
-            "id": f"beb_{key}",
-            "title": nombres[key]
-        })
-
-    enviar({
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": "Selecciona tu bebida 🍹"},
-            "action": {
-                "button": "Ver opciones",
-                "sections": [{"title": "Bebidas", "rows": rows}]
-            }
-        }
-    })
-
-# =========================
-# PRODUCTOS
-# =========================
-def mostrar_productos(numero, categoria):
-    items = menu[categoria]
-    rows = []
-
-    for nombre, precio in items.items():
-        rows.append({
-            "id": f"prod_{nombre}",
-            "title": nombre[:24],
-            "description": f"${precio}"
-        })
-
-    enviar({
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": categoria.upper()},
-            "action": {
-                "button": "Ver opciones",
-                "sections": [{"title": "Productos", "rows": rows}]
-            }
-        }
-    })
-
-# =========================
-# PRODUCTOS BEBIDAS
-# =========================
-def mostrar_productos_bebidas(numero, sub):
-    items = menu["bebidas"][sub]
-    rows = []
-
-    for nombre, precio in items.items():
-        rows.append({
-            "id": f"prod_{nombre}",
-            "title": nombre[:24],
-            "description": f"${precio}"
-        })
-
-    enviar({
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": sub.upper()},
-            "action": {
-                "button": "Ver opciones",
-                "sections": [{"title": "Bebidas", "rows": rows}]
-            }
-        }
-    })
-
-# =========================
 # PEDIDO
 # =========================
 def mostrar_pedido(numero, u):
-    if not u["pedido"]:
-        texto = "🧾 Tu pedido está vacío"
-    else:
-        texto = "🧾 Tu pedido:\n\n"
-        total = 0
+    texto = "🧾 Tu pedido:\n\n"
+    total = 0
 
-        for item in u["pedido"]:
-            subtotal = item["cantidad"] * item["precio"]
-            texto += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
-            total += subtotal
+    for item in u["pedido"]:
+        subtotal = item["cantidad"] * item["precio"]
+        texto += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
+        total += subtotal
 
-        texto += f"\n💰 Total: ${total}"
+    texto += f"\n💰 Total: ${total}"
 
     enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": texto}})
     acciones(numero)
@@ -325,10 +200,13 @@ def webhook():
 
         u = usuarios[numero]
 
+        # =========================
         # TEXTO
+        # =========================
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
 
+            # SALUDO
             if texto in ["hola", "menu", "inicio"]:
                 if not u["bienvenida"]:
                     menu_principal(numero, True)
@@ -337,15 +215,13 @@ def webhook():
                     menu_seguir(numero)
                 return "ok", 200
 
+            # CANTIDAD
             if u.get("esperando_cantidad"):
                 cantidad = int(texto)
 
-                nombre = u["producto"]["nombre"]
-                precio = u["producto"]["precio"]
-
                 u["pedido"].append({
-                    "nombre": nombre,
-                    "precio": precio,
+                    "nombre": u["producto"]["nombre"],
+                    "precio": u["producto"]["precio"],
                     "cantidad": cantidad
                 })
 
@@ -354,26 +230,60 @@ def webhook():
                 enviar({
                     "messaging_product": "whatsapp",
                     "to": numero,
-                    "text": {"body": f"✅ {cantidad} {nombre} agregado"}
+                    "text": {"body": f"✅ {cantidad} {u['producto']['nombre']} agregado"}
                 })
 
                 mostrar_pedido(numero, u)
                 return "ok", 200
 
-        # INTERACTIVOS
+            # =========================
+            # FLUJO FINALIZAR
+            # =========================
+
+            if u.get("estado") == "nombre":
+                u["nombre"] = texto
+                u["estado"] = "direccion"
+                enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"📍 Dirección:"}})
+                return "ok", 200
+
+            if u.get("estado") == "direccion":
+                u["direccion"] = texto
+                u["estado"] = "telefono"
+                enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"📞 Teléfono:"}})
+                return "ok", 200
+
+            if u.get("estado") == "telefono":
+                u["telefono"] = texto
+
+                folio = str(uuid.uuid4())[:8]
+
+                resumen = f"🧾 ORDEN #{folio}\n\n"
+                total = 0
+
+                for item in u["pedido"]:
+                    subtotal = item["cantidad"] * item["precio"]
+                    resumen += f"{item['cantidad']} {item['nombre']} - ${subtotal}\n"
+                    total += subtotal
+
+                resumen += f"\n💰 Total: ${total}\n\n"
+                resumen += f"👤 {u['nombre']}\n📍 {u['direccion']}\n📞 {u['telefono']}"
+
+                enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":resumen}})
+                enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"✅ Pedido confirmado\n🙏 Gracias por tu compra"}})
+
+                usuarios[numero] = {"pedido": [], "bienvenida": True}
+                return "ok", 200
+
+        # =========================
+        # BOTONES
+        # =========================
         if "interactive" in mensaje:
             inter = mensaje["interactive"]
 
             if inter["type"] == "button_reply":
                 id = inter["button_reply"]["id"]
 
-                if id == "comida":
-                    mostrar_categorias(numero)
-
-                elif id == "bebidas":
-                    mostrar_subcategorias_bebidas(numero)
-
-                elif id == "pedido":
+                if id == "pedido":
                     mostrar_pedido(numero, u)
                     menu_seguir(numero)
 
@@ -382,39 +292,12 @@ def webhook():
 
                 elif id == "vaciar":
                     u["pedido"] = []
-                    enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "🗑️ Carrito vacío"}})
+                    enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"🗑️ Carrito vacío"}})
                     menu_seguir(numero)
 
-            elif inter["type"] == "list_reply":
-                id = inter["list_reply"]["id"]
-
-                if id in menu:
-                    mostrar_productos(numero, id)
-
-                elif id.startswith("beb_"):
-                    sub = id.replace("beb_", "")
-                    mostrar_productos_bebidas(numero, sub)
-
-                elif id.startswith("prod_"):
-                    nombre = id.replace("prod_", "")
-
-                    for cat in menu:
-                        if cat == "bebidas":
-                            for sub in menu["bebidas"]:
-                                if nombre in menu["bebidas"][sub]:
-                                    precio = menu["bebidas"][sub][nombre]
-                        else:
-                            if nombre in menu[cat]:
-                                precio = menu[cat][nombre]
-
-                    u["producto"] = {"nombre": nombre, "precio": precio}
-                    u["esperando_cantidad"] = True
-
-                    enviar({
-                        "messaging_product": "whatsapp",
-                        "to": numero,
-                        "text": {"body": f"¿Cuántos {nombre} necesitas?"}
-                    })
+                elif id == "finalizar":
+                    u["estado"] = "nombre"
+                    enviar({"messaging_product":"whatsapp","to":numero,"text":{"body":"👤 Nombre del cliente:"}})
 
     except Exception as e:
         print("ERROR:", e)
