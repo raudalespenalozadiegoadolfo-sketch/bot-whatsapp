@@ -6,10 +6,6 @@ import uuid
 
 app = Flask(__name__)
 
-# =========================
-# CONFIG (RENDER)
-# =========================
-
 TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
@@ -33,7 +29,7 @@ def enviar(data):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚ COMPLETO
+# MENÚ
 # =========================
 
 menu = {
@@ -43,56 +39,17 @@ menu = {
         "Al ajo": 180,
         "Al ajillo": 180
     },
-    "pulpo": {
-        "A la diabla": 220,
-        "Empanizado": 220,
-        "Zarandeado": 220
-    },
     "filete": {
         "A la diabla": 160,
         "Empanizado": 170,
         "Al ajo": 170
-    },
-    "cortes finos": {
-        "Arrachera": 220,
-        "T-Bone": 250,
-        "Rib Eye": 270
-    },
-    "ceviche": {
-        "Pescado": 180,
-        "Camarón": 200
-    },
-    "aguachile": {
-        "Verde": 190,
-        "Rojo": 190,
-        "Negro": 190
-    }
-}
-
-bebidas = {
-    "cervezas": {
-        "Corona extra": 40,
-        "Corona light": 40,
-        "Heineken cero": 40,
-        "Tecate": 35,
-        "Tecate light": 35,
-        "Indio": 35,
-        "Ultra": 40,
-        "Pacífico": 40
-    },
-    "refrescos": {
-        "Coca Cola": 30,
-        "Pepsi": 25,
-        "7UP": 25,
-        "Manzana": 25,
-        "Sprite": 30
     }
 }
 
 usuarios = {}
 
 # =========================
-# MENSAJES UI
+# UI
 # =========================
 
 def menu_principal(numero):
@@ -105,7 +62,8 @@ def menu_principal(numero):
             "header": {
                 "type": "image",
                 "image": {
-                    "link": "https://i.imgur.com/6Xb6K5K.jpg"
+                    # 🔥 CAMBIA ESTA IMAGEN SI QUIERES
+                    "link": "https://images.unsplash.com/photo-1559847844-5315695dadae"
                 }
             },
             "body": {
@@ -114,7 +72,6 @@ def menu_principal(numero):
             "action": {
                 "buttons": [
                     {"type": "reply", "reply": {"id": "comida", "title": "🍽️ Comida"}},
-                    {"type": "reply", "reply": {"id": "bebidas", "title": "🍹 Bebidas"}},
                     {"type": "reply", "reply": {"id": "pedido", "title": "🧾 Pedido"}}
                 ]
             }
@@ -169,26 +126,6 @@ def mostrar_pedido(numero, u):
         "text": {"body": texto}
     })
 
-    acciones(numero)
-
-def acciones(numero):
-    enviar({
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "button",
-            "body": {"text": "¿Qué deseas hacer?"},
-            "action": {
-                "buttons": [
-                    {"type": "reply", "reply": {"id": "seguir", "title": "➕ Seguir"}},
-                    {"type": "reply", "reply": {"id": "finalizar", "title": "✅ Finalizar"}},
-                    {"type": "reply", "reply": {"id": "vaciar", "title": "🗑️ Vaciar"}}
-                ]
-            }
-        }
-    })
-
 # =========================
 # WEBHOOK
 # =========================
@@ -198,129 +135,105 @@ def webhook():
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
-        return "Error"
+        return "error"
 
     data = request.json
     print("DATA:", data)
 
+    # 🔥 SOLUCIÓN ERROR 'messages'
     try:
-        msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        if "entry" not in data:
+            return "ok"
+
+        cambios = data["entry"][0]["changes"][0]["value"]
+
+        if "messages" not in cambios:
+            return "ok"
+
+        msg = cambios["messages"][0]
         numero = msg["from"]
 
-        if numero not in usuarios:
-            usuarios[numero] = {"pedido": [], "estado": None}
+    except:
+        return "ok"
 
-        u = usuarios[numero]
+    # =========================
 
-        # TEXTO
-        if "text" in msg:
-            texto = limpiar(msg["text"]["body"])
+    if numero not in usuarios:
+        usuarios[numero] = {"pedido": [], "estado": None}
 
-            if texto == "hola":
-                menu_principal(numero)
+    u = usuarios[numero]
 
-            elif texto.isdigit() and isinstance(u["estado"], dict):
-                cantidad = int(texto)
-                nombre = u["estado"]["nombre"]
-                precio = u["estado"]["precio"]
+    # TEXTO
+    if "text" in msg:
+        texto = limpiar(msg["text"]["body"])
 
-                for _ in range(cantidad):
-                    u["pedido"].append({"nombre": nombre, "precio": precio})
+        if texto == "hola":
+            menu_principal(numero)
 
-                enviar({
-                    "messaging_product": "whatsapp",
-                    "to": numero,
-                    "text": {"body": f"✅ {cantidad} {nombre} agregado"}
+        elif texto.isdigit() and isinstance(u["estado"], dict):
+            cantidad = int(texto)
+            nombre = u["estado"]["nombre"]
+            precio = u["estado"]["precio"]
+
+            for _ in range(cantidad):
+                u["pedido"].append({
+                    "nombre": nombre,
+                    "precio": precio
                 })
 
+            enviar({
+                "messaging_product": "whatsapp",
+                "to": numero,
+                "text": {"body": f"✅ {cantidad} {nombre} agregado"}
+            })
+
+            mostrar_pedido(numero, u)
+            u["estado"] = None
+
+    # BOTONES / LISTAS
+    if "interactive" in msg:
+        inter = msg["interactive"]
+
+        if inter["type"] == "button_reply":
+            id = inter["button_reply"]["id"]
+
+            if id == "comida":
+                lista(numero, "Selecciona categoría:", list(menu.keys()), "cat")
+
+            elif id == "pedido":
                 mostrar_pedido(numero, u)
-                u["estado"] = None
 
-            elif u["estado"] == "nombre":
-                u["nombre"] = texto
-                u["estado"] = "direccion"
-                enviar({"messaging_product": "whatsapp", "to": numero,
-                        "text": {"body": "📍 Dirección:"}})
+        elif inter["type"] == "list_reply":
+            id = inter["list_reply"]["id"]
 
-            elif u["estado"] == "direccion":
-                u["direccion"] = texto
-                u["estado"] = "telefono"
-                enviar({"messaging_product": "whatsapp", "to": numero,
-                        "text": {"body": "📞 Teléfono:"}})
+            # CATEGORÍA
+            if id.startswith("cat_"):
+                cat = id.replace("cat_", "")
+                lista(numero, cat, list(menu[cat].keys()), "prod")
 
-            elif u["estado"] == "telefono":
-                u["telefono"] = texto
-                u["estado"] = None
+            # PRODUCTO
+            elif id.startswith("prod_"):
+                prod = id.replace("prod_", "")
 
-                orden = str(uuid.uuid4())[:8]
+                # 🔥 SOLUCIÓN BUG DUPLICADO
+                for cat in menu:
+                    if prod in menu[cat]:
+                        precio = menu[cat][prod]
+                        nombre = f"{cat.capitalize()} {prod}"
 
-                enviar({
-                    "messaging_product": "whatsapp",
-                    "to": numero,
-                    "text": {
-                        "body": f"📦 Orden #{orden}\n\n👤 {u['nombre']}\n📍 {u['direccion']}\n📞 {u['telefono']}\n\n¿Confirmar pedido?"
-                    }
-                })
+                        u["estado"] = {
+                            "nombre": nombre,
+                            "precio": precio
+                        }
 
-        # INTERACTIVO
-        if "interactive" in msg:
-            inter = msg["interactive"]
-
-            if inter["type"] == "button_reply":
-                id = inter["button_reply"]["id"]
-
-                if id == "comida":
-                    lista(numero, "🍽️ Selecciona categoría:", list(menu.keys()), "cat")
-
-                elif id == "bebidas":
-                    lista(numero, "🍹 Selecciona bebida:", list(bebidas.keys()), "beb")
-
-                elif id == "pedido":
-                    mostrar_pedido(numero, u)
-
-                elif id == "seguir":
-                    menu_principal(numero)
-
-                elif id == "vaciar":
-                    u["pedido"] = []
-                    enviar({"messaging_product": "whatsapp", "to": numero,
-                            "text": {"body": "🗑️ Pedido vaciado"}})
-
-                elif id == "finalizar":
-                    u["estado"] = "nombre"
-                    enviar({"messaging_product": "whatsapp", "to": numero,
-                            "text": {"body": "👤 Nombre:"}})
-
-            elif inter["type"] == "list_reply":
-                id = inter["list_reply"]["id"]
-
-                if id.startswith("cat_"):
-                    cat = id.replace("cat_", "")
-                    lista(numero, cat, list(menu[cat].keys()), "prod")
-
-                elif id.startswith("prod_"):
-                    prod = id.replace("prod_", "")
-
-                    for cat in menu:
-                        if prod in menu[cat]:
-                            precio = menu[cat][prod]
-                            nombre = f"{cat.capitalize()} {prod}"
-
-                            u["estado"] = {
-                                "nombre": nombre,
-                                "precio": precio
+                        enviar({
+                            "messaging_product": "whatsapp",
+                            "to": numero,
+                            "text": {
+                                "body": f"¿Cuántos {nombre} necesitas?"
                             }
-
-                            enviar({
-                                "messaging_product": "whatsapp",
-                                "to": numero,
-                                "text": {
-                                    "body": f"¿Cuántos {nombre} necesitas?"
-                                }
-                            })
-
-    except Exception as e:
-        print("ERROR:", e)
+                        })
+                        break  # 👈 ESTO ARREGLA EL DOBLE MENSAJE
 
     return "ok"
 
