@@ -17,7 +17,7 @@ LOGO_URL = "https://i.ibb.co/MxLwfTvY/Whats-App-Image-2026-04-09-at-6-29-58-PM.j
 usuarios = {}
 
 # =========================
-# MENÚ COMPLETO
+# MENÚ
 # =========================
 menu = {
     "camarones": {
@@ -50,23 +50,26 @@ menu = {
         "Aguachile Negro": 190,
         "Aguachile Rojo": 190
     },
-    "bebidas": {
+
+    # SUBMENÚ BEBIDAS
+    "cervezas": {
         "Corona Extra 355ml": 40,
         "Corona Light 355ml": 40,
-        "Heineken 0.0": 40,
         "Tecate": 35,
-        "Tecate Light": 35,
-        "Pacífico": 40,
-        "Corona Familiar": 90,
-        "Michelada Camarón": 100,
-        "Michelada Clásica": 80,
+        "Pacífico": 40
+    },
+    "refrescos": {
         "Coca Cola 600ml": 30,
         "Pepsi 600ml": 25,
         "7UP 600ml": 25,
         "Manzana 600ml": 25,
-        "Sprite 600ml": 30,
+        "Sprite 600ml": 30
+    },
+    "aguas": {
         "Agua Jamaica 1L": 30,
-        "Agua Horchata 1L": 30,
+        "Agua Horchata 1L": 30
+    },
+    "preparadas": {
         "Piña Colada": 100,
         "Mojito": 80,
         "Clericot": 90
@@ -85,7 +88,7 @@ def enviar(data):
     requests.post(url, headers=headers, json=data)
 
 # =========================
-# MENÚ PRINCIPAL (CON IMAGEN)
+# MENÚ PRINCIPAL
 # =========================
 def menu_principal(numero):
 
@@ -114,12 +117,13 @@ def menu_principal(numero):
     })
 
 # =========================
-# CATEGORÍAS
+# CATEGORÍAS COMIDA
 # =========================
 def mostrar_categorias(numero):
     rows = []
+
     for cat in menu:
-        if cat != "bebidas":
+        if cat not in ["cervezas", "refrescos", "aguas", "preparadas"]:
             rows.append({"id": cat, "title": cat.capitalize()})
 
     enviar({
@@ -129,7 +133,38 @@ def mostrar_categorias(numero):
         "interactive": {
             "type": "list",
             "body": {"text": "Selecciona categoría"},
-            "action": {"button": "Ver opciones", "sections": [{"title": "Menú", "rows": rows}]}
+            "action": {
+                "button": "Ver opciones",
+                "sections": [{"title": "Menú", "rows": rows}]
+            }
+        }
+    })
+
+# =========================
+# SUBMENÚ BEBIDAS
+# =========================
+def mostrar_bebidas(numero):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": "Selecciona tu bebida 🍹"},
+            "action": {
+                "button": "Ver opciones",
+                "sections": [
+                    {
+                        "title": "Bebidas",
+                        "rows": [
+                            {"id": "cervezas", "title": "🍺 Cervezas"},
+                            {"id": "refrescos", "title": "🥤 Refrescos"},
+                            {"id": "aguas", "title": "💧 Aguas"},
+                            {"id": "preparadas", "title": "🍹 Preparadas"}
+                        ]
+                    }
+                ]
+            }
         }
     })
 
@@ -153,7 +188,10 @@ def mostrar_productos(numero, categoria):
         "interactive": {
             "type": "list",
             "body": {"text": categoria.upper()},
-            "action": {"button": "Ver opciones", "sections": [{"title": "Productos", "rows": rows}]}
+            "action": {
+                "button": "Ver opciones",
+                "sections": [{"title": "Productos", "rows": rows}]
+            }
         }
     })
 
@@ -172,7 +210,7 @@ def mostrar_pedido(numero, u):
             texto += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
             total += subtotal
 
-        texto += f"\n💰 Total: ${total}"
+        texto += f"\n💰 Total: ${total:,}"
 
     enviar({
         "messaging_product": "whatsapp",
@@ -236,8 +274,24 @@ def webhook():
                 menu_principal(numero)
                 return "ok", 200
 
+            if texto in ["gracias"]:
+                enviar({
+                    "messaging_product": "whatsapp",
+                    "to": numero,
+                    "text": {"body": "🙏 Gracias a usted por su preferencia"}
+                })
+                return "ok", 200
+
             if u.get("esperando_cantidad"):
-                cantidad = int(texto)
+                try:
+                    cantidad = int(texto)
+                except:
+                    enviar({
+                        "messaging_product": "whatsapp",
+                        "to": numero,
+                        "text": {"body": "❌ Escribe un número válido"}
+                    })
+                    return "ok", 200
 
                 nombre = u["producto"]["nombre"]
                 precio = u["producto"]["precio"]
@@ -286,13 +340,14 @@ def webhook():
                     resumen += f"{item['cantidad']} {item['nombre']} - ${subtotal}\n"
                     total += subtotal
 
-                resumen += f"\n💰 Total: ${total}\n\n"
+                resumen += f"\n💰 Total: ${total:,}\n\n"
                 resumen += f"👤 {u['nombre']}\n📍 {u['direccion']}\n📞 {u['telefono']}"
 
                 enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": resumen}})
                 enviar({"messaging_product": "whatsapp","to": numero,"text": {"body": "🙏 Gracias por su preferencia"}})
 
                 usuarios[numero] = {"pedido": []}
+                menu_principal(numero)
                 return "ok", 200
 
         # INTERACTIVO
@@ -306,7 +361,7 @@ def webhook():
                     mostrar_categorias(numero)
 
                 elif id == "bebidas":
-                    mostrar_productos(numero, "bebidas")
+                    mostrar_bebidas(numero)
 
                 elif id == "pedido":
                     mostrar_pedido(numero, u)
