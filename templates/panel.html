@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Panel de Pedidos</title>
+    <meta http-equiv="refresh" content="5">
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #111;
+            color: white;
+            margin: 0;
+        }
+
+        h1 {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .contenedor {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .columna {
+            flex: 1;
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .pedido {
+            background: #2a2a2a;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+        }
+
+        .nuevo { border-left: 5px solid #00ffcc; }
+        .proceso { border-left: 5px solid #ffaa00; }
+        .enviado { border-left: 5px solid #00aaff; }
+
+        button {
+            margin-top: 5px;
+            padding: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .btn1 { background: orange; }
+        .btn2 { background: cyan; }
+    </style>
+</head>
+
+<body>
+
+<h1>📦 Panel de Pedidos</h1>
+
+<div class="contenedor">
+
+    <div class="columna">
+        <h2>🆕 Nuevos</h2>
+        {% for p in pedidos %}
+            {% if p.estado == "nuevo" %}
+            <div class="pedido nuevo">
+                <b>#{{p.folio}}</b><br>
+                {{p.cliente}}<br>
+                ${{p.total}}
+                <form method="POST" action="/estado">
+                    <input type="hidden" name="folio" value="{{p.folio}}">
+                    <button class="btn1" name="estado" value="proceso">➡️ Procesar</button>
+                </form>
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <div class="columna">
+        <h2>👨‍🍳 En proceso</h2>
+        {% for p in pedidos %}
+            {% if p.estado == "proceso" %}
+            <div class="pedido proceso">
+                <b>#{{p.folio}}</b><br>
+                {{p.cliente}}<br>
+                ${{p.total}}
+                <form method="POST" action="/estado">
+                    <input type="hidden" name="folio" value="{{p.folio}}">
+                    <button class="btn2" name="estado" value="enviado">🚚 Enviar</button>
+                </form>
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <div class="columna">
+        <h2>🚚 Enviados</h2>
+        {% for p in pedidos %}
+            {% if p.estado == "enviado" %}
+            <div class="pedido enviado">
+                <b>#{{p.folio}}</b><br>
+                {{p.cliente}}<br>
+                ${{p.total}}
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+</div>
+
+</body>
+</html>
