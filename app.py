@@ -18,7 +18,7 @@ LOGO_URL = "https://i.ibb.co/MxLwfTvY/Whats-App-Image-2026-04-09-at-6-29-58-PM.j
 usuarios = {}
 
 # =========================
-# 🔥 BASE DE DATOS
+# BASE DE DATOS
 # =========================
 DB_FILE = "pedidos.json"
 
@@ -60,14 +60,14 @@ def enviar_mensaje(numero, texto):
     })
 
 # =========================
-# 🔥 RUTA BASE (IMPORTANTE)
+# RUTA BASE
 # =========================
 @app.route("/")
 def home():
     return "Servidor activo 🔥"
 
 # =========================
-# 🔥 PANEL
+# PANEL
 # =========================
 @app.route("/panel")
 def panel():
@@ -124,69 +124,6 @@ def stats():
     return {"ventas": total, "pedidos": pedidos}
 
 # =========================
-# MENÚ
-# =========================
-menu = {
-    "camarones": {
-        "Camarones a la Diabla": 180,
-        "Camarones Empanizados": 190,
-        "Camarones al Ajo": 180,
-        "Camarones al Ajillo": 180
-    },
-    "pulpo": {
-        "Pulpo a la Diabla": 220,
-        "Pulpo Empanizado": 220,
-        "Pulpo Zarandeado": 220
-    },
-    "filete": {
-        "Filete a la Diabla": 160,
-        "Filete Empanizado": 170,
-        "Filete al Ajo": 170
-    },
-    "cortes": {
-        "Arrachera": 220,
-        "T-Bone": 250,
-        "Rib Eye": 270
-    },
-    "bebidas": {
-        "refrescos": {
-            "Coca Cola 600ml": 30,
-            "Coca Cola Light 600ml": 30,
-            "Pepsi 600ml": 25,
-            "Sangría 600ml": 25,
-            "7UP 600ml": 25
-        },
-        "aguas1L": {
-            "Agua Horchata 1L": 35,
-            "Agua Jamaica 1L": 35,
-            "Agua Piña 1L": 35,
-            "Agua Limón 1L": 35
-        },
-        "aguas500": {
-            "Agua Horchata 500ml": 20,
-            "Agua Jamaica 500ml": 20,
-            "Agua Piña 500ml": 20,
-            "Agua Limón 500ml": 20
-        },
-        "micheladas": {
-            "Michelada Camarón 1L": 100,
-            "Michelada Clamato 1L": 80,
-            "Michelada Tamarindo 1L": 90
-        },
-        "cervezas": {
-            "Corona Extra": 40,
-            "Corona Light": 40,
-            "Corona Cero": 40,
-            "Tecate": 35,
-            "Tecate Light": 35,
-            "Indio": 30,
-            "Ultra": 30,
-            "Heineken 0.0": 35
-        }
-    }
-}
-
-# =========================
 # WEBHOOK
 # =========================
 @app.route("/webhook", methods=["GET", "POST"])
@@ -213,9 +150,55 @@ def webhook():
 
         u = usuarios[numero]
 
+        # =========================
+        # TEXTO
+        # =========================
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
 
+            # 🔥 MENÚ PRINCIPAL
+            if texto in ["hola", "menu", "inicio"]:
+                enviar_mensaje(numero,
+                    "👋 Bienvenido a Marisco Alegre 🦐\n\n"
+                    "Escribe:\n"
+                    "1️⃣ Comida\n"
+                    "2️⃣ Bebidas\n"
+                    "3️⃣ Ver pedido"
+                )
+                return "ok", 200
+
+            # 🔥 RESPUESTAS
+            if texto == "1":
+                enviar_mensaje(numero,
+                    "🍽️ Menú de comida:\n"
+                    "- Camarones\n- Pulpo\n- Filete\n- Cortes"
+                )
+                return "ok", 200
+
+            if texto == "2":
+                enviar_mensaje(numero,
+                    "🍹 Menú de bebidas:\n"
+                    "- Refrescos\n- Aguas\n- Micheladas\n- Cervezas"
+                )
+                return "ok", 200
+
+            if texto == "3":
+                if not u["pedido"]:
+                    enviar_mensaje(numero, "🧾 Tu pedido está vacío")
+                else:
+                    texto_pedido = "🧾 Tu pedido:\n"
+                    total = 0
+                    for item in u["pedido"]:
+                        subtotal = item["cantidad"] * item["precio"]
+                        texto_pedido += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
+                        total += subtotal
+                    texto_pedido += f"\n💰 Total: ${total}"
+                    enviar_mensaje(numero, texto_pedido)
+                return "ok", 200
+
+            # =========================
+            # FINALIZAR PEDIDO
+            # =========================
             if u.get("estado") == "telefono":
                 u["telefono"] = texto
 
@@ -238,16 +221,7 @@ def webhook():
 
                 guardar_pedido(pedido_data)
 
-                resumen = f"🧾 Pedido #{folio}\n\n"
-                for item in u["pedido"]:
-                    subtotal = item["cantidad"] * item["precio"]
-                    resumen += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
-
-                resumen += f"\n💰 Total: ${total}\n\n"
-                resumen += f"👤 {u.get('nombre','')}\n📍 {u.get('direccion','')}\n📞 {u.get('telefono','')}"
-
-                enviar_mensaje(numero, resumen)
-                enviar_mensaje(numero, "✅ Pedido confirmado. ¡Gracias!")
+                enviar_mensaje(numero, f"✅ Pedido #{folio} confirmado\n💰 Total: ${total}")
 
                 usuarios[numero] = {"pedido": [], "bienvenida": True}
                 return "ok", 200
@@ -259,7 +233,7 @@ def webhook():
 
 
 # =========================
-# 🔥 IMPORTANTE PARA RENDER
+# RUN
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
