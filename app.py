@@ -34,7 +34,6 @@ def guardar_pedido(pedido):
     with open(DB_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# 🔥 NUEVO (IMPORTANTE)
 def leer_pedidos():
     try:
         with open(DB_FILE, "r") as f:
@@ -61,11 +60,18 @@ def enviar_mensaje(numero, texto):
     })
 
 # =========================
+# 🔥 RUTA BASE (IMPORTANTE)
+# =========================
+@app.route("/")
+def home():
+    return "Servidor activo 🔥"
+
+# =========================
 # 🔥 PANEL
 # =========================
 @app.route("/panel")
 def panel():
-    pedidos = leer_pedidos()  # 🔥 AQUÍ ESTABA EL ERROR
+    pedidos = leer_pedidos()
     return render_template("panel.html", pedidos=pedidos)
 
 @app.route("/pedidos")
@@ -81,7 +87,6 @@ def cambiar_estado(folio, nuevo_estado):
         if p["folio"] == folio:
             p["estado"] = nuevo_estado
 
-            # 🔥 MENSAJES AUTOMÁTICOS
             if nuevo_estado == "preparando":
                 enviar_mensaje(p["telefono"], f"👨‍🍳 Tu pedido #{folio} está en preparación")
 
@@ -119,11 +124,8 @@ def stats():
     return {"ventas": total, "pedidos": pedidos}
 
 # =========================
+# MENÚ
 # =========================
-# 🔥 TU CÓDIGO ORIGINAL (NO MODIFICADO)
-# =========================
-# =========================
-
 menu = {
     "camarones": {
         "Camarones a la Diabla": 180,
@@ -256,5 +258,9 @@ def webhook():
     return "ok", 200
 
 
+# =========================
+# 🔥 IMPORTANTE PARA RENDER
+# =========================
 if __name__ == "__main__":
-    app.run(port=5000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
