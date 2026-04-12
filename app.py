@@ -34,6 +34,14 @@ def guardar_pedido(pedido):
     with open(DB_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+# 🔥 NUEVO (IMPORTANTE)
+def leer_pedidos():
+    try:
+        with open(DB_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return []
+
 # =========================
 # ENVIAR
 # =========================
@@ -57,22 +65,17 @@ def enviar_mensaje(numero, texto):
 # =========================
 @app.route("/panel")
 def panel():
-    return render_template("panel.html")
+    pedidos = leer_pedidos()  # 🔥 AQUÍ ESTABA EL ERROR
+    return render_template("panel.html", pedidos=pedidos)
 
 @app.route("/pedidos")
 def obtener_pedidos():
-    try:
-        with open(DB_FILE) as f:
-            data = json.load(f)
-    except:
-        data = []
-    return jsonify(data)
+    return jsonify(leer_pedidos())
 
 @app.route("/estado/<folio>/<nuevo_estado>")
 def cambiar_estado(folio, nuevo_estado):
 
-    with open(DB_FILE) as f:
-        data = json.load(f)
+    data = leer_pedidos()
 
     for p in data:
         if p["folio"] == folio:
@@ -96,8 +99,7 @@ def cambiar_estado(folio, nuevo_estado):
 @app.route("/repartidor/<folio>/<nombre>")
 def asignar_repartidor(folio, nombre):
 
-    with open(DB_FILE) as f:
-        data = json.load(f)
+    data = leer_pedidos()
 
     for p in data:
         if p["folio"] == folio:
@@ -110,12 +112,7 @@ def asignar_repartidor(folio, nombre):
 
 @app.route("/stats")
 def stats():
-    try:
-        with open(DB_FILE) as f:
-            data = json.load(f)
-    except:
-        data = []
-
+    data = leer_pedidos()
     total = sum(p["total"] for p in data)
     pedidos = len(data)
 
@@ -123,13 +120,10 @@ def stats():
 
 # =========================
 # =========================
-# 🔥 AQUÍ EMPIEZA TU CÓDIGO ORIGINAL
+# 🔥 TU CÓDIGO ORIGINAL (NO MODIFICADO)
 # =========================
 # =========================
 
-# =========================
-# MENÚ
-# =========================
 menu = {
     "camarones": {
         "Camarones a la Diabla": 180,
