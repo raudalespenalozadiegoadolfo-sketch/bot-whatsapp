@@ -3,13 +3,10 @@ import requests
 import os
 import uuid
 import json
-print("🔥 APP INICIANDO...")
 
 app = Flask(__name__)
 
-@app.route("/")
-def home():
-    return "Servidor activo 🔥"
+print("🔥 APP INICIANDO...")
 
 # =========================
 # VARIABLES
@@ -55,7 +52,10 @@ def enviar(data):
         "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
     }
-    requests.post(url, headers=headers, json=data)
+    try:
+        requests.post(url, headers=headers, json=data)
+    except Exception as e:
+        print("ERROR enviando:", e)
 
 def enviar_mensaje(numero, texto):
     enviar({
@@ -65,19 +65,26 @@ def enviar_mensaje(numero, texto):
     })
 
 # =========================
-# RUTA BASE
+# RUTAS WEB
 # =========================
 @app.route("/")
 def home():
     return "Servidor activo 🔥"
+
+@app.route("/test")
+def test():
+    return "OK"
 
 # =========================
 # PANEL
 # =========================
 @app.route("/panel")
 def panel():
-    pedidos = leer_pedidos()
-    return render_template("panel.html", pedidos=pedidos)
+    try:
+        pedidos = leer_pedidos()
+        return render_template("panel.html", pedidos=pedidos)
+    except Exception as e:
+        return f"Error panel: {e}"
 
 @app.route("/pedidos")
 def obtener_pedidos():
@@ -85,7 +92,6 @@ def obtener_pedidos():
 
 @app.route("/estado/<folio>/<nuevo_estado>")
 def cambiar_estado(folio, nuevo_estado):
-
     data = leer_pedidos()
 
     for p in data:
@@ -108,7 +114,6 @@ def cambiar_estado(folio, nuevo_estado):
 
 @app.route("/repartidor/<folio>/<nombre>")
 def asignar_repartidor(folio, nombre):
-
     data = leer_pedidos()
 
     for p in data:
@@ -155,35 +160,26 @@ def webhook():
 
         u = usuarios[numero]
 
-        # =========================
-        # TEXTO
-        # =========================
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
 
-            # 🔥 MENÚ PRINCIPAL
+            # MENÚ PRINCIPAL
             if texto in ["hola", "menu", "inicio"]:
                 enviar_mensaje(numero,
                     "👋 Bienvenido a Marisco Alegre 🦐\n\n"
-                    "Escribe:\n"
-                    "1️⃣ Comida\n"
-                    "2️⃣ Bebidas\n"
-                    "3️⃣ Ver pedido"
+                    "1️⃣ Comida\n2️⃣ Bebidas\n3️⃣ Ver pedido"
                 )
                 return "ok", 200
 
-            # 🔥 RESPUESTAS
             if texto == "1":
                 enviar_mensaje(numero,
-                    "🍽️ Menú de comida:\n"
-                    "- Camarones\n- Pulpo\n- Filete\n- Cortes"
+                    "🍽️ Menú de comida:\n- Camarones\n- Pulpo\n- Filete\n- Cortes"
                 )
                 return "ok", 200
 
             if texto == "2":
                 enviar_mensaje(numero,
-                    "🍹 Menú de bebidas:\n"
-                    "- Refrescos\n- Aguas\n- Micheladas\n- Cervezas"
+                    "🍹 Menú de bebidas:\n- Refrescos\n- Aguas\n- Micheladas\n- Cervezas"
                 )
                 return "ok", 200
 
@@ -201,17 +197,13 @@ def webhook():
                     enviar_mensaje(numero, texto_pedido)
                 return "ok", 200
 
-            # =========================
             # FINALIZAR PEDIDO
-            # =========================
             if u.get("estado") == "telefono":
                 u["telefono"] = texto
 
                 folio = str(uuid.uuid4())[:8].upper()
 
-                total = 0
-                for item in u["pedido"]:
-                    total += item["cantidad"] * item["precio"]
+                total = sum(item["cantidad"] * item["precio"] for item in u["pedido"])
 
                 pedido_data = {
                     "folio": folio,
@@ -235,7 +227,6 @@ def webhook():
         print("ERROR:", e)
 
     return "ok", 200
-
 
 # =========================
 # RUN
