@@ -198,7 +198,13 @@ def webhook():
     data = request.json
 
     try:
-        msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        value = data["entry"][0]["changes"][0]["value"]
+
+        # 🔴 SOLUCIÓN ERROR 'messages'
+        if "messages" not in value:
+            return "ok", 200
+
+        msg = value["messages"][0]
         numero = msg["from"]
 
         if numero not in usuarios:
@@ -226,6 +232,11 @@ def webhook():
                 enviar_texto(numero, f"🧾 Total: ${total}")
 
             elif texto == "finalizar":
+
+                if len(u["pedido"]) == 0:
+                    enviar_texto(numero, "⚠️ No tienes productos")
+                    return "ok", 200
+
                 total = sum(u["pedido"])
 
                 folio = guardar_pedido({
@@ -236,11 +247,16 @@ def webhook():
                     "repartidor": "sin asignar"
                 })
 
-                enviar_texto(numero, f"✅ Pedido #{folio} confirmado\n💰 ${total}")
+                # 🔥 FIX folio None
+                if folio is None:
+                    enviar_texto(numero, "❌ Error al guardar pedido")
+                else:
+                    enviar_texto(numero, f"✅ Pedido #{folio} confirmado\n💰 ${total}")
+
                 usuarios[numero] = {"pedido": []}
 
     except Exception as e:
-        print("ERROR:", e)
+        print("ERROR WEBHOOK:", e)
 
     return "ok", 200
 
