@@ -15,21 +15,21 @@ TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 
-LOGO_URL = "https://i.ibb.co/MxLwfTvY/Whats-App-Image-2026-04-09-at-6-29-58-PM.jpg"
-
+DB_FILE = "pedidos.json"
 usuarios = {}
 
 # =========================
 # BASE DE DATOS
 # =========================
-DB_FILE = "pedidos.json"
+def asegurar_db():
+    if not os.path.exists(DB_FILE):
+        with open(DB_FILE, "w") as f:
+            json.dump([], f)
 
 def guardar_pedido(pedido):
-    try:
-        with open(DB_FILE, "r") as f:
-            data = json.load(f)
-    except:
-        data = []
+    asegurar_db()
+    with open(DB_FILE, "r") as f:
+        data = json.load(f)
 
     data.append(pedido)
 
@@ -37,14 +37,12 @@ def guardar_pedido(pedido):
         json.dump(data, f, indent=2)
 
 def leer_pedidos():
-    try:
-        with open(DB_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return []
+    asegurar_db()
+    with open(DB_FILE, "r") as f:
+        return json.load(f)
 
 # =========================
-# ENVIAR
+# ENVIAR WHATSAPP
 # =========================
 def enviar(data):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
@@ -55,7 +53,7 @@ def enviar(data):
     try:
         requests.post(url, headers=headers, json=data)
     except Exception as e:
-        print("ERROR enviando:", e)
+        print("❌ ERROR enviando:", e)
 
 def enviar_mensaje(numero, texto):
     enviar({
@@ -69,7 +67,7 @@ def enviar_mensaje(numero, texto):
 # =========================
 @app.route("/")
 def home():
-    return "Servidor activo 🔥"
+    return "🔥 Servidor activo"
 
 @app.route("/test")
 def test():
@@ -84,11 +82,27 @@ def panel():
         pedidos = leer_pedidos()
         return render_template("panel.html", pedidos=pedidos)
     except Exception as e:
-        return f"Error panel: {e}"
+        return f"❌ Error panel: {e}"
 
 @app.route("/pedidos")
 def obtener_pedidos():
     return jsonify(leer_pedidos())
+
+# 🔥 CREAR PEDIDO DE PRUEBA
+@app.route("/crear_test")
+def crear_test():
+    pedido = {
+        "folio": str(uuid.uuid4())[:8].upper(),
+        "cliente": "Cliente prueba",
+        "direccion": "Dirección demo",
+        "telefono": "0000000000",
+        "items": [{"nombre": "Camarones", "cantidad": 2, "precio": 150}],
+        "total": 300,
+        "estado": "nuevo",
+        "repartidor": "Sin asignar"
+    }
+    guardar_pedido(pedido)
+    return "✅ Pedido de prueba creado"
 
 @app.route("/estado/<folio>/<nuevo_estado>")
 def cambiar_estado(folio, nuevo_estado):
@@ -99,13 +113,13 @@ def cambiar_estado(folio, nuevo_estado):
             p["estado"] = nuevo_estado
 
             if nuevo_estado == "preparando":
-                enviar_mensaje(p["telefono"], f"👨‍🍳 Tu pedido #{folio} está en preparación")
+                enviar_mensaje(p["telefono"], f"👨‍🍳 Pedido #{folio} en preparación")
 
             elif nuevo_estado == "enviado":
-                enviar_mensaje(p["telefono"], f"🚚 Tu pedido #{folio} va en camino")
+                enviar_mensaje(p["telefono"], f"🚚 Pedido #{folio} en camino")
 
             elif nuevo_estado == "entregado":
-                enviar_mensaje(p["telefono"], f"✅ Pedido #{folio} entregado. ¡Gracias!")
+                enviar_mensaje(p["telefono"], f"✅ Pedido #{folio} entregado")
 
     with open(DB_FILE, "w") as f:
         json.dump(data, f, indent=2)
@@ -156,75 +170,72 @@ def webhook():
         numero = mensaje["from"]
 
         if numero not in usuarios:
-            usuarios[numero] = {"pedido": [], "bienvenida": False}
+            usuarios[numero] = {"pedido": []}
 
         u = usuarios[numero]
 
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
 
-            # MENÚ PRINCIPAL
+            # MENÚ
             if texto in ["hola", "menu", "inicio"]:
                 enviar_mensaje(numero,
                     "👋 Bienvenido a Marisco Alegre 🦐\n\n"
-                    "1️⃣ Comida\n2️⃣ Bebidas\n3️⃣ Ver pedido"
+                    "1️⃣ Comida\n2️⃣ Bebidas\n3️⃣ Ver pedido\n4️⃣ Confirmar"
                 )
                 return "ok", 200
 
+            # AGREGAR PRODUCTOS (DEMO)
             if texto == "1":
-                enviar_mensaje(numero,
-                    "🍽️ Menú de comida:\n- Camarones\n- Pulpo\n- Filete\n- Cortes"
-                )
+                item = {"nombre": "Camarones", "cantidad": 1, "precio": 150}
+                u["pedido"].append(item)
+                enviar_mensaje(numero, "🦐 Camarones agregados al pedido")
                 return "ok", 200
 
             if texto == "2":
-                enviar_mensaje(numero,
-                    "🍹 Menú de bebidas:\n- Refrescos\n- Aguas\n- Micheladas\n- Cervezas"
-                )
+                item = {"nombre": "Refresco", "cantidad": 1, "precio": 30}
+                u["pedido"].append(item)
+                enviar_mensaje(numero, "🥤 Refresco agregado al pedido")
                 return "ok", 200
 
+            # VER PEDIDO
             if texto == "3":
                 if not u["pedido"]:
-                    enviar_mensaje(numero, "🧾 Tu pedido está vacío")
+                    enviar_mensaje(numero, "🧾 Pedido vacío")
                 else:
-                    texto_pedido = "🧾 Tu pedido:\n"
-                    total = 0
-                    for item in u["pedido"]:
-                        subtotal = item["cantidad"] * item["precio"]
-                        texto_pedido += f"• {item['cantidad']} {item['nombre']} - ${subtotal}\n"
-                        total += subtotal
-                    texto_pedido += f"\n💰 Total: ${total}"
-                    enviar_mensaje(numero, texto_pedido)
+                    total = sum(i["cantidad"] * i["precio"] for i in u["pedido"])
+                    enviar_mensaje(numero, f"🧾 Total: ${total}")
                 return "ok", 200
 
-            # FINALIZAR PEDIDO
-            if u.get("estado") == "telefono":
-                u["telefono"] = texto
+            # CONFIRMAR
+            if texto == "4":
+                if not u["pedido"]:
+                    enviar_mensaje(numero, "❌ No hay productos")
+                    return "ok", 200
 
                 folio = str(uuid.uuid4())[:8].upper()
+                total = sum(i["cantidad"] * i["precio"] for i in u["pedido"])
 
-                total = sum(item["cantidad"] * item["precio"] for item in u["pedido"])
-
-                pedido_data = {
+                pedido = {
                     "folio": folio,
-                    "cliente": u.get("nombre",""),
-                    "direccion": u.get("direccion",""),
-                    "telefono": u.get("telefono",""),
+                    "cliente": "WhatsApp",
+                    "direccion": "Pendiente",
+                    "telefono": numero,
                     "items": u["pedido"],
                     "total": total,
                     "estado": "nuevo",
                     "repartidor": "Sin asignar"
                 }
 
-                guardar_pedido(pedido_data)
+                guardar_pedido(pedido)
 
-                enviar_mensaje(numero, f"✅ Pedido #{folio} confirmado\n💰 Total: ${total}")
+                enviar_mensaje(numero, f"✅ Pedido #{folio} confirmado\n💰 ${total}")
 
-                usuarios[numero] = {"pedido": [], "bienvenida": True}
+                usuarios[numero] = {"pedido": []}
                 return "ok", 200
 
     except Exception as e:
-        print("ERROR:", e)
+        print("❌ ERROR:", e)
 
     return "ok", 200
 
