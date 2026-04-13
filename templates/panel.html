@@ -1,76 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Panel Pro</title>
-
-    <style>
-        body {
-            font-family: Arial;
-            background: #f5f5f5;
-            text-align: center;
-        }
-
-        h1 {
-            margin-top: 20px;
-        }
-
-        .pedido {
-            background: white;
-            margin: 15px auto;
-            padding: 15px;
-            width: 80%;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            text-align: left;
-        }
-
-        .estado {
-            font-weight: bold;
-            color: green;
-        }
-
-        .btn {
-            padding: 5px 10px;
-            margin: 5px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        .preparando { background: orange; color: white; }
-        .enviado { background: blue; color: white; }
-        .entregado { background: green; color: white; }
-
-    </style>
+    <title>Panel PRO</title>
 </head>
-
 <body>
-
 <h1>🔥 PANEL PRO 🔥</h1>
 
-{% if pedidos %}
-    {% for p in pedidos %}
-        <div class="pedido">
-            <p><b>Folio:</b> {{p.folio}}</p>
-            <p><b>Cliente:</b> {{p.cliente}}</p>
-            <p><b>Total:</b> ${{p.total}}</p>
-            <p><b>Estado:</b> <span class="estado">{{p.estado}}</span></p>
-
-            <button class="btn preparando" onclick="cambiar('{{p.folio}}','preparando')">Preparando</button>
-            <button class="btn enviado" onclick="cambiar('{{p.folio}}','enviado')">Enviado</button>
-            <button class="btn entregado" onclick="cambiar('{{p.folio}}','entregado')">Entregado</button>
-        </div>
-    {% endfor %}
-{% else %}
-    <p>⚠️ No hay pedidos todavía</p>
-{% endif %}
-
-<script>
-function cambiar(folio, estado){
-    fetch(/estado/${folio}/${estado})
-    .then(() => location.reload())
-}
-</script>
+{% for p in pedidos %}
+<div style="border:1px solid #ccc; margin:10px; padding:10px;">
+    <b>Folio:</b> {{p.folio}}<br>
+    <b>Cliente:</b> {{p.cliente}}<br>
+    <b>Total:</b> ${{p.total}}<br>
+    <b>Estado:</b> {{p.estado}}<br>
+</div>
+{% endfor %}
 
 </body>
 </html>
