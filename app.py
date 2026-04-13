@@ -14,7 +14,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 usuarios = {}
 
 # =========================
-# MENU REAL (TU CARTA)
+# MENU
 # =========================
 MENU = {
     "camarones_diabla": 180,
@@ -87,6 +87,33 @@ def obtener_pedidos():
     return [{"folio": r[0], "cliente": r[1], "total": r[2], "estado": r[3]} for r in rows]
 
 # =========================
+# STATS 🔥
+# =========================
+@app.route("/stats")
+def stats():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM pedidos")
+    pedidos, ventas = cur.fetchone()
+
+    cur.execute("SELECT COUNT(*) FROM pedidos WHERE estado='preparando'")
+    preparando = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM pedidos WHERE estado='enviado'")
+    enviados = cur.fetchone()[0]
+
+    cur.close()
+    conn.close()
+
+    return {
+        "pedidos": pedidos,
+        "ventas": ventas,
+        "preparando": preparando,
+        "enviados": enviados
+    }
+
+# =========================
 # WHATSAPP
 # =========================
 def enviar(data):
@@ -118,7 +145,7 @@ def enviar_menu(numero):
                     {
                         "title": "Comida",
                         "rows": [
-                            {"id": "camarones_diabla", "title": "Camarones a la diabla", "description": "$180"},
+                            {"id": "camarones_diabla", "title": "Camarones", "description": "$180"},
                             {"id": "pulpo_diabla", "title": "Pulpo", "description": "$220"},
                             {"id": "filete_diabla", "title": "Filete", "description": "$160"},
                             {"id": "coctel_camaron", "title": "Coctel", "description": "$190"}
@@ -141,7 +168,11 @@ def enviar_menu(numero):
 # =========================
 @app.route("/panel")
 def panel():
-    return render_template("panel.html", pedidos=obtener_pedidos())
+    return render_template("panel.html")
+
+@app.route("/pedidos")
+def pedidos():
+    return jsonify(obtener_pedidos())
 
 @app.route("/estado/<folio>/<estado>")
 def estado(folio, estado):
@@ -175,13 +206,13 @@ def webhook():
 
         u = usuarios[numero]
 
-        # BOTÓN / LISTA
+        # BOTONES
         if "interactive" in msg:
             seleccion = msg["interactive"]["list_reply"]["id"]
 
             if seleccion in MENU:
                 u["pedido"].append(MENU[seleccion])
-                enviar_texto(numero, f"✅ agregado\nEscribe ver o finalizar")
+                enviar_texto(numero, "✅ Agregado\nEscribe ver o finalizar")
 
         # TEXTO
         if "text" in msg:
