@@ -93,9 +93,13 @@
 <script>
 async function cargar() {
 
+    console.log("CARGANDO PEDIDOS...");
+
     let res = await fetch("/pedidos");
     let data = await res.json();
 
+    console.log(data);
+    
     document.getElementById("nuevo").innerHTML = "";
     document.getElementById("preparando").innerHTML = "";
     document.getElementById("enviado").innerHTML = "";
