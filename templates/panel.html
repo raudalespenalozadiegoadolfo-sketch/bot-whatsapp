@@ -2,18 +2,53 @@
 <html>
 <head>
     <title>Panel PRO</title>
+    <meta http-equiv="refresh" content="5">
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f9;
+            text-align: center;
+        }
+        .card {
+            background: white;
+            margin: 20px auto;
+            padding: 20px;
+            width: 400px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px #ccc;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .prep { background: orange; }
+        .env { background: blue; color: white; }
+        .ent { background: green; color: white; }
+    </style>
 </head>
 <body>
+
 <h1>🔥 PANEL PRO 🔥</h1>
 
-{% for p in pedidos %}
-<div style="border:1px solid #ccc; margin:10px; padding:10px;">
-    <b>Folio:</b> {{p.folio}}<br>
-    <b>Cliente:</b> {{p.cliente}}<br>
-    <b>Total:</b> ${{p.total}}<br>
-    <b>Estado:</b> {{p.estado}}<br>
-</div>
-{% endfor %}
+{% if pedidos %}
+    {% for p in pedidos %}
+    <div class="card">
+        <b>Folio:</b> {{p.folio}}<br>
+        <b>Cliente:</b> {{p.cliente}}<br>
+        <b>Total:</b> ${{p.total}}<br>
+        <b>Estado:</b> {{p.estado}}<br><br>
+
+        <button class="prep">Preparando</button>
+        <button class="env">Enviado</button>
+        <button class="ent">Entregado</button>
+    </div>
+    {% endfor %}
+{% else %}
+    <p>⚠️ No hay pedidos</p>
+{% endif %}
 
 </body>
 </html>
