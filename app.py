@@ -3,8 +3,13 @@ import requests
 import os
 import uuid
 import json
+print("🔥 APP INICIANDO...")
 
 app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Servidor activo 🔥"
 
 # =========================
 # VARIABLES
