@@ -1,54 +1,68 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Panel PRO</title>
-    <meta http-equiv="refresh" content="5">
-    <style>
-        body {
-            font-family: Arial;
-            background: #f4f6f9;
-            text-align: center;
-        }
-        .card {
-            background: white;
-            margin: 20px auto;
-            padding: 20px;
-            width: 400px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px #ccc;
-        }
-        button {
-            margin: 5px;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .prep { background: orange; }
-        .env { background: blue; color: white; }
-        .ent { background: green; color: white; }
-    </style>
+<meta http-equiv="refresh" content="5">
+<style>
+body{font-family:Arial;background:#f4f6f9}
+.grid{display:flex;gap:20px;justify-content:center}
+.col{width:250px}
+.card{background:white;padding:10px;margin:10px;border-radius:10px}
+button{margin:5px;padding:5px;border:none;border-radius:5px}
+</style>
 </head>
+
 <body>
 
-<h1>🔥 PANEL PRO 🔥</h1>
+<h1 style="text-align:center;">🔥 PANEL PRO 🔥</h1>
 
-{% if pedidos %}
-    {% for p in pedidos %}
-    <div class="card">
-        <b>Folio:</b> {{p.folio}}<br>
-        <b>Cliente:</b> {{p.cliente}}<br>
-        <b>Total:</b> ${{p.total}}<br>
-        <b>Estado:</b> {{p.estado}}<br><br>
+<div class="grid">
 
-        <button class="prep">Preparando</button>
-        <button class="env">Enviado</button>
-        <button class="ent">Entregado</button>
-    </div>
-    {% endfor %}
-{% else %}
-    <p>⚠️ No hay pedidos</p>
-{% endif %}
+<div class="col">
+<h3>🆕 Nuevos</h3>
+{% for p in pedidos if p.estado=='nuevo' %}
+<div class="card">
+#{{p.folio}} ${{p.total}}<br>
+<button onclick="cambiar('{{p.folio}}','preparando')">Preparar</button>
+</div>
+{% endfor %}
+</div>
+
+<div class="col">
+<h3>👨‍🍳 Preparando</h3>
+{% for p in pedidos if p.estado=='preparando' %}
+<div class="card">
+#{{p.folio}} ${{p.total}}<br>
+<button onclick="cambiar('{{p.folio}}','enviado')">Enviar</button>
+</div>
+{% endfor %}
+</div>
+
+<div class="col">
+<h3>🚚 Enviados</h3>
+{% for p in pedidos if p.estado=='enviado' %}
+<div class="card">
+#{{p.folio}} ${{p.total}}<br>
+<button onclick="cambiar('{{p.folio}}','entregado')">Entregar</button>
+</div>
+{% endfor %}
+</div>
+
+<div class="col">
+<h3>✅ Entregados</h3>
+{% for p in pedidos if p.estado=='entregado' %}
+<div class="card">
+#{{p.folio}} ${{p.total}}
+</div>
+{% endfor %}
+</div>
+
+</div>
+
+<script>
+function cambiar(folio, estado){
+fetch(/estado/${folio}/${estado}).then(()=>location.reload())
+}
+</script>
 
 </body>
 </html>
