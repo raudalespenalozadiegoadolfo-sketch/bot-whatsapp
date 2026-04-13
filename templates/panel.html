@@ -6,93 +6,70 @@
     <style>
         body {
             font-family: Arial;
-            background: #f4f6f8;
-            padding: 20px;
+            background: #f5f5f5;
+            text-align: center;
         }
 
         h1 {
-            text-align: center;
+            margin-top: 20px;
         }
 
         .pedido {
             background: white;
-            border-radius: 10px;
+            margin: 15px auto;
             padding: 15px;
-            margin: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            width: 80%;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            text-align: left;
         }
 
-        .nuevo { border-left: 6px solid orange; }
-        .preparando { border-left: 6px solid blue; }
-        .enviado { border-left: 6px solid purple; }
-        .entregado { border-left: 6px solid green; }
+        .estado {
+            font-weight: bold;
+            color: green;
+        }
 
-        button {
-            margin: 5px;
+        .btn {
             padding: 5px 10px;
+            margin: 5px;
             border: none;
             border-radius: 5px;
             cursor: pointer;
         }
 
-        .btn-prep { background: blue; color: white; }
-        .btn-env { background: purple; color: white; }
-        .btn-ent { background: green; color: white; }
+        .preparando { background: orange; color: white; }
+        .enviado { background: blue; color: white; }
+        .entregado { background: green; color: white; }
 
     </style>
-
 </head>
 
 <body>
 
 <h1>🔥 PANEL PRO 🔥</h1>
 
-<div id="contenedor"></div>
+{% if pedidos %}
+    {% for p in pedidos %}
+        <div class="pedido">
+            <p><b>Folio:</b> {{p.folio}}</p>
+            <p><b>Cliente:</b> {{p.cliente}}</p>
+            <p><b>Total:</b> ${{p.total}}</p>
+            <p><b>Estado:</b> <span class="estado">{{p.estado}}</span></p>
+
+            <button class="btn preparando" onclick="cambiar('{{p.folio}}','preparando')">Preparando</button>
+            <button class="btn enviado" onclick="cambiar('{{p.folio}}','enviado')">Enviado</button>
+            <button class="btn entregado" onclick="cambiar('{{p.folio}}','entregado')">Entregado</button>
+        </div>
+    {% endfor %}
+{% else %}
+    <p>⚠️ No hay pedidos todavía</p>
+{% endif %}
 
 <script>
-
-function cargarPedidos() {
-    fetch("/pedidos")
-    .then(res => res.json())
-    .then(data => {
-
-        let html = "";
-
-        if (data.length === 0) {
-            html = "<h2>No hay pedidos</h2>";
-        }
-
-        data.reverse().forEach(p => {
-
-            html += `
-            <div class="pedido ${p.estado}">
-                <b>Pedido:</b> ${p.folio} <br>
-                <b>Cliente:</b> ${p.cliente} <br>
-                <b>Total:</b> $${p.total} <br>
-                <b>Estado:</b> ${p.estado} <br><br>
-
-                <button class="btn-prep" onclick="cambiar('${p.folio}','preparando')">Preparando</button>
-                <button class="btn-env" onclick="cambiar('${p.folio}','enviado')">Enviado</button>
-                <button class="btn-ent" onclick="cambiar('${p.folio}','entregado')">Entregado</button>
-            </div>
-            `;
-        });
-
-        document.getElementById("contenedor").innerHTML = html;
-    });
-}
-
-function cambiar(folio, estado) {
+function cambiar(folio, estado){
     fetch(/estado/${folio}/${estado})
-    .then(() => cargarPedidos());
+    .then(() => location.reload())
 }
-
-// 🔥 Auto refresh cada 3 segundos
-setInterval(cargarPedidos, 3000);
-
-// Primera carga
-cargarPedidos();
-
 </script>
 
 </body>
