@@ -15,21 +15,19 @@ TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = os.getenv("MY_VERIFY_TOKEN")
 
-DB_FILE = "pedidos.json"
 usuarios = {}
 
 # =========================
 # BASE DE DATOS
 # =========================
-def asegurar_db():
-    if not os.path.exists(DB_FILE):
-        with open(DB_FILE, "w") as f:
-            json.dump([], f)
+DB_FILE = "pedidos.json"
 
 def guardar_pedido(pedido):
-    asegurar_db()
-    with open(DB_FILE, "r") as f:
-        data = json.load(f)
+    try:
+        with open(DB_FILE, "r") as f:
+            data = json.load(f)
+    except:
+        data = []
 
     data.append(pedido)
 
@@ -37,9 +35,35 @@ def guardar_pedido(pedido):
         json.dump(data, f, indent=2)
 
 def leer_pedidos():
-    asegurar_db()
-    with open(DB_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(DB_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return []
+
+# =========================
+# MENÚ
+# =========================
+MENU = {
+    "camarones": [
+        {"id": "cam_diabla", "nombre": "Camarones a la diabla", "precio": 180},
+        {"id": "cam_emp", "nombre": "Camarones empanizados", "precio": 190},
+        {"id": "cam_ajo", "nombre": "Camarones al ajo", "precio": 180},
+    ],
+    "pulpo": [
+        {"id": "pul_diabla", "nombre": "Pulpo a la diabla", "precio": 220},
+        {"id": "pul_emp", "nombre": "Pulpo empanizado", "precio": 220},
+    ],
+    "filete": [
+        {"id": "filete_diabla", "nombre": "Filete a la diabla", "precio": 160},
+        {"id": "filete_emp", "nombre": "Filete empanizado", "precio": 170},
+    ],
+    "bebidas": [
+        {"id": "coca", "nombre": "Coca Cola", "precio": 30},
+        {"id": "pepsi", "nombre": "Pepsi", "precio": 25},
+        {"id": "agua", "nombre": "Agua fresca", "precio": 35},
+    ]
+}
 
 # =========================
 # ENVIAR WHATSAPP
@@ -53,7 +77,7 @@ def enviar(data):
     try:
         requests.post(url, headers=headers, json=data)
     except Exception as e:
-        print("❌ ERROR enviando:", e)
+        print("ERROR enviando:", e)
 
 def enviar_mensaje(numero, texto):
     enviar({
@@ -63,89 +87,139 @@ def enviar_mensaje(numero, texto):
     })
 
 # =========================
-# RUTAS WEB
+# BOTONES
+# =========================
+def enviar_menu(numero):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "🍽️ MENÚ\nSelecciona categoría"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "cat_camarones", "title": "🍤 Camarones"}},
+                    {"type": "reply", "reply": {"id": "cat_pulpo", "title": "🐙 Pulpo"}},
+                    {"type": "reply", "reply": {"id": "cat_filete", "title": "🐟 Filete"}},
+                    {"type": "reply", "reply": {"id": "cat_bebidas", "title": "🥤 Bebidas"}}
+                ]
+            }
+        }
+    })
+
+def enviar_productos(numero, categoria):
+    productos = MENU[categoria]
+
+    buttons = []
+    for p in productos[:3]:  # WhatsApp permite 3 botones
+        buttons.append({
+            "type": "reply",
+            "reply": {
+                "id": f"prod_{p['id']}",
+                "title": p["nombre"][:20]
+            }
+        })
+
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": f"Selecciona de {categoria}"},
+            "action": {"buttons": buttons}
+        }
+    })
+
+def botones_cantidad(numero, producto_id):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "¿Cuántos quieres?"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": f"{producto_id}_1", "title": "1"}},
+                    {"type": "reply", "reply": {"id": f"{producto_id}_2", "title": "2"}},
+                    {"type": "reply", "reply": {"id": f"{producto_id}_3", "title": "3"}}
+                ]
+            }
+        }
+    })
+
+# =========================
+# CARRITO
+# =========================
+def agregar_producto(u, producto_id, cantidad):
+    for categoria in MENU.values():
+        for p in categoria:
+            if p["id"] == producto_id:
+                u["pedido"].append({
+                    "nombre": p["nombre"],
+                    "cantidad": cantidad,
+                    "precio": p["precio"]
+                })
+
+def ver_pedido(numero, u):
+    if not u["pedido"]:
+        enviar_mensaje(numero, "🧾 Vacío")
+        return
+
+    total = 0
+    texto = "🧾 TU PEDIDO\n\n"
+
+    for item in u["pedido"]:
+        subtotal = item["cantidad"] * item["precio"]
+        texto += f"{item['cantidad']} x {item['nombre']} = ${subtotal}\n"
+        total += subtotal
+
+    texto += f"\n💰 Total: ${total}"
+
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": texto},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "seguir", "title": "➕ Más"}},
+                    {"type": "reply", "reply": {"id": "checkout", "title": "✅ Pagar"}},
+                    {"type": "reply", "reply": {"id": "cancelar", "title": "❌ Cancelar"}}
+                ]
+            }
+        }
+    })
+
+# =========================
+# RUTAS
 # =========================
 @app.route("/")
 def home():
-    return "🔥 Servidor activo"
+    return "🔥 BOT ACTIVO"
 
-@app.route("/test")
-def test():
-    return "OK"
-
-# =========================
-# PANEL
-# =========================
 @app.route("/panel")
 def panel():
-    try:
-        pedidos = leer_pedidos()
-        return render_template("panel.html", pedidos=pedidos)
-    except Exception as e:
-        return f"❌ Error panel: {e}"
+    pedidos = leer_pedidos()
+    return render_template("panel.html", pedidos=pedidos)
 
-@app.route("/pedidos")
-def obtener_pedidos():
-    return jsonify(leer_pedidos())
-
-# 🔥 CREAR PEDIDO DE PRUEBA
 @app.route("/crear_test")
-def crear_test():
+def test():
     pedido = {
-        "folio": str(uuid.uuid4())[:8].upper(),
+        "folio": "TEST123",
         "cliente": "Cliente prueba",
-        "direccion": "Dirección demo",
-        "telefono": "0000000000",
-        "items": [{"nombre": "Camarones", "cantidad": 2, "precio": 150}],
+        "direccion": "Casa",
+        "telefono": "000",
+        "items": [],
         "total": 300,
-        "estado": "nuevo",
-        "repartidor": "Sin asignar"
+        "estado": "nuevo"
     }
     guardar_pedido(pedido)
-    return "✅ Pedido de prueba creado"
-
-@app.route("/estado/<folio>/<nuevo_estado>")
-def cambiar_estado(folio, nuevo_estado):
-    data = leer_pedidos()
-
-    for p in data:
-        if p["folio"] == folio:
-            p["estado"] = nuevo_estado
-
-            if nuevo_estado == "preparando":
-                enviar_mensaje(p["telefono"], f"👨‍🍳 Pedido #{folio} en preparación")
-
-            elif nuevo_estado == "enviado":
-                enviar_mensaje(p["telefono"], f"🚚 Pedido #{folio} en camino")
-
-            elif nuevo_estado == "entregado":
-                enviar_mensaje(p["telefono"], f"✅ Pedido #{folio} entregado")
-
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-    return "ok"
-
-@app.route("/repartidor/<folio>/<nombre>")
-def asignar_repartidor(folio, nombre):
-    data = leer_pedidos()
-
-    for p in data:
-        if p["folio"] == folio:
-            p["repartidor"] = nombre
-
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-    return "ok"
-
-@app.route("/stats")
-def stats():
-    data = leer_pedidos()
-    total = sum(p["total"] for p in data)
-    pedidos = len(data)
-
-    return {"ventas": total, "pedidos": pedidos}
+    return "Pedido creado"
 
 # =========================
 # WEBHOOK
@@ -174,70 +248,83 @@ def webhook():
 
         u = usuarios[numero]
 
+        # BOTONES
+        if "interactive" in mensaje:
+            resp = mensaje["interactive"]["button_reply"]["id"]
+
+            if resp.startswith("cat_"):
+                categoria = resp.replace("cat_", "")
+                enviar_productos(numero, categoria)
+                return "ok", 200
+
+            if resp.startswith("prod_"):
+                producto_id = resp.replace("prod_", "")
+                botones_cantidad(numero, producto_id)
+                return "ok", 200
+
+            if "_" in resp:
+                producto_id, cantidad = resp.split("_")
+                agregar_producto(u, producto_id, int(cantidad))
+                enviar_mensaje(numero, "✅ Agregado")
+                ver_pedido(numero, u)
+                return "ok", 200
+
+            if resp == "seguir":
+                enviar_menu(numero)
+                return "ok", 200
+
+            if resp == "checkout":
+                u["estado"] = "nombre"
+                enviar_mensaje(numero, "🧑 Tu nombre:")
+                return "ok", 200
+
+            if resp == "cancelar":
+                usuarios[numero] = {"pedido": []}
+                enviar_mensaje(numero, "❌ Cancelado")
+                return "ok", 200
+
+        # TEXTO
         if "text" in mensaje:
             texto = mensaje["text"]["body"].lower()
 
-            # MENÚ
-            if texto in ["hola", "menu", "inicio"]:
-                enviar_mensaje(numero,
-                    "👋 Bienvenido a Marisco Alegre 🦐\n\n"
-                    "1️⃣ Comida\n2️⃣ Bebidas\n3️⃣ Ver pedido\n4️⃣ Confirmar"
-                )
+            if texto in ["hola", "menu"]:
+                enviar_menu(numero)
                 return "ok", 200
 
-            # AGREGAR PRODUCTOS (DEMO)
-            if texto == "1":
-                item = {"nombre": "Camarones", "cantidad": 1, "precio": 150}
-                u["pedido"].append(item)
-                enviar_mensaje(numero, "🦐 Camarones agregados al pedido")
+            if u.get("estado") == "nombre":
+                u["nombre"] = texto
+                u["estado"] = "direccion"
+                enviar_mensaje(numero, "📍 Dirección:")
                 return "ok", 200
 
-            if texto == "2":
-                item = {"nombre": "Refresco", "cantidad": 1, "precio": 30}
-                u["pedido"].append(item)
-                enviar_mensaje(numero, "🥤 Refresco agregado al pedido")
-                return "ok", 200
-
-            # VER PEDIDO
-            if texto == "3":
-                if not u["pedido"]:
-                    enviar_mensaje(numero, "🧾 Pedido vacío")
-                else:
-                    total = sum(i["cantidad"] * i["precio"] for i in u["pedido"])
-                    enviar_mensaje(numero, f"🧾 Total: ${total}")
-                return "ok", 200
-
-            # CONFIRMAR
-            if texto == "4":
-                if not u["pedido"]:
-                    enviar_mensaje(numero, "❌ No hay productos")
-                    return "ok", 200
+            if u.get("estado") == "direccion":
+                u["direccion"] = texto
 
                 folio = str(uuid.uuid4())[:8].upper()
                 total = sum(i["cantidad"] * i["precio"] for i in u["pedido"])
 
                 pedido = {
                     "folio": folio,
-                    "cliente": "WhatsApp",
-                    "direccion": "Pendiente",
+                    "cliente": u["nombre"],
+                    "direccion": u["direccion"],
                     "telefono": numero,
                     "items": u["pedido"],
                     "total": total,
-                    "estado": "nuevo",
-                    "repartidor": "Sin asignar"
+                    "estado": "nuevo"
                 }
 
                 guardar_pedido(pedido)
 
-                enviar_mensaje(numero, f"✅ Pedido #{folio} confirmado\n💰 ${total}")
+                enviar_mensaje(numero, f"🔥 Pedido #{folio} confirmado\nTotal: ${total}")
 
                 usuarios[numero] = {"pedido": []}
                 return "ok", 200
 
     except Exception as e:
-        print("❌ ERROR:", e)
+        print("ERROR:", e)
 
     return "ok", 200
+
 
 # =========================
 # RUN
