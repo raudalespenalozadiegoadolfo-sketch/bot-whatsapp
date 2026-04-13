@@ -1,13 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta http-equiv="refresh" content="5">
+<title>Panel PRO</title>
+
 <style>
-body{font-family:Arial;background:#f4f6f9}
-.grid{display:flex;gap:20px;justify-content:center}
-.col{width:250px}
-.card{background:white;padding:10px;margin:10px;border-radius:10px}
-button{margin:5px;padding:5px;border:none;border-radius:5px}
+body{
+    font-family: Arial;
+    background:#f1f3f5;
+}
+
+/* DASHBOARD */
+.top{
+    display:flex;
+    justify-content:space-around;
+    margin:20px;
+}
+
+.box{
+    background:white;
+    padding:15px;
+    border-radius:10px;
+    width:150px;
+    text-align:center;
+    box-shadow:0 0 10px #ccc;
+}
+
+/* COLUMNAS */
+.grid{
+    display:flex;
+    gap:15px;
+    padding:20px;
+}
+
+.col{
+    flex:1;
+}
+
+.card{
+    background:white;
+    padding:10px;
+    margin:10px;
+    border-radius:10px;
+    box-shadow:0 0 10px #ccc;
+}
+
+button{
+    margin-top:5px;
+    padding:5px;
+    border:none;
+    border-radius:5px;
+    cursor:pointer;
+}
+
+.prep{background:orange;}
+.env{background:blue;color:white;}
+.ent{background:green;color:white;}
+
 </style>
 </head>
 
@@ -15,53 +63,106 @@ button{margin:5px;padding:5px;border:none;border-radius:5px}
 
 <h1 style="text-align:center;">🔥 PANEL PRO 🔥</h1>
 
+<!-- DASHBOARD -->
+<div class="top">
+    <div class="box">💰 Ventas<br><span id="ventas">0</span></div>
+    <div class="box">📦 Pedidos<br><span id="pedidos">0</span></div>
+    <div class="box">👨‍🍳 Preparando<br><span id="prep">0</span></div>
+    <div class="box">🚚 En camino<br><span id="env">0</span></div>
+</div>
+
+<!-- COLUMNAS -->
 <div class="grid">
 
 <div class="col">
 <h3>🆕 Nuevos</h3>
-{% for p in pedidos if p.estado=='nuevo' %}
-<div class="card">
-#{{p.folio}} ${{p.total}}<br>
-<button onclick="cambiar('{{p.folio}}','preparando')">Preparar</button>
-</div>
-{% endfor %}
+<div id="nuevo"></div>
 </div>
 
 <div class="col">
 <h3>👨‍🍳 Preparando</h3>
-{% for p in pedidos if p.estado=='preparando' %}
-<div class="card">
-#{{p.folio}} ${{p.total}}<br>
-<button onclick="cambiar('{{p.folio}}','enviado')">Enviar</button>
-</div>
-{% endfor %}
+<div id="preparando"></div>
 </div>
 
 <div class="col">
 <h3>🚚 Enviados</h3>
-{% for p in pedidos if p.estado=='enviado' %}
-<div class="card">
-#{{p.folio}} ${{p.total}}<br>
-<button onclick="cambiar('{{p.folio}}','entregado')">Entregar</button>
-</div>
-{% endfor %}
+<div id="enviado"></div>
 </div>
 
 <div class="col">
 <h3>✅ Entregados</h3>
-{% for p in pedidos if p.estado=='entregado' %}
-<div class="card">
-#{{p.folio}} ${{p.total}}
-</div>
-{% endfor %}
+<div id="entregado"></div>
 </div>
 
 </div>
 
 <script>
-function cambiar(folio, estado){
-fetch(/estado/${folio}/${estado}).then(()=>location.reload())
+
+let ultimoTotal = 0;
+
+// 🔄 CARGAR PEDIDOS
+function cargar(){
+    fetch("/pedidos")
+    .then(r=>r.json())
+    .then(data=>{
+
+        document.getElementById("nuevo").innerHTML=""
+        document.getElementById("preparando").innerHTML=""
+        document.getElementById("enviado").innerHTML=""
+        document.getElementById("entregado").innerHTML=""
+
+        if(data.length > ultimoTotal){
+            sonido()
+        }
+
+        ultimoTotal = data.length
+
+        data.forEach(p=>{
+
+            let card = `
+            <div class="card">
+                #${p.folio}<br>
+                $${p.total}<br>
+                <button class="prep" onclick="cambiar(${p.folio},'preparando')">Prep</button>
+                <button class="env" onclick="cambiar(${p.folio},'enviado')">Enviar</button>
+                <button class="ent" onclick="cambiar(${p.folio},'entregado')">OK</button>
+            </div>
+            `
+
+            document.getElementById(p.estado).innerHTML += card
+        })
+    })
 }
+
+// 🔄 STATS
+function stats(){
+    fetch("/stats")
+    .then(r=>r.json())
+    .then(s=>{
+        document.getElementById("ventas").innerText = "$"+s.ventas
+        document.getElementById("pedidos").innerText = s.pedidos
+        document.getElementById("prep").innerText = s.preparando
+        document.getElementById("env").innerText = s.enviados
+    })
+}
+
+// 🔊 SONIDO
+function sonido(){
+    let audio = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3")
+    audio.play()
+}
+
+// CAMBIAR ESTADO
+function cambiar(folio, estado){
+    fetch(/estado/${folio}/${estado})
+}
+
+// LOOP
+setInterval(()=>{
+    cargar()
+    stats()
+}, 3000)
+
 </script>
 
 </body>
