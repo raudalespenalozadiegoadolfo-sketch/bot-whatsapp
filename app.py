@@ -1,12 +1,7 @@
 from flask import Flask, request, jsonify, render_template
-import requests
-import os
-import uuid
-import psycopg2
+import requests, os, psycopg2
 
 app = Flask(__name__)
-
-print("🔥 APP INICIANDO...")
 
 # =========================
 # VARIABLES
@@ -19,7 +14,24 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 usuarios = {}
 
 # =========================
-# DB CONNECTION
+# MENU REAL (TU CARTA)
+# =========================
+MENU = {
+    "camarones_diabla": 180,
+    "camarones_empanizados": 190,
+    "camarones_ajo": 180,
+    "pulpo_diabla": 220,
+    "pulpo_empanizado": 220,
+    "filete_diabla": 160,
+    "filete_empanizado": 170,
+    "coctel_camaron": 190,
+    "coctel_pulpo": 200,
+    "coca": 30,
+    "pepsi": 25
+}
+
+# =========================
+# DB
 # =========================
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -31,7 +43,7 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS pedidos (
         id SERIAL PRIMARY KEY,
-        folio TEXT,
+        folio SERIAL,
         cliente TEXT,
         telefono TEXT,
         total INT,
@@ -44,53 +56,35 @@ def init_db():
     cur.close()
     conn.close()
 
-init_db()
-
-# =========================
-# DB FUNCTIONS
-# =========================
 def guardar_pedido(p):
     conn = get_db()
     cur = conn.cursor()
 
     cur.execute("""
-    INSERT INTO pedidos (folio, cliente, telefono, total, estado, repartidor)
-    VALUES (%s,%s,%s,%s,%s,%s)
-    """, (
-        p["folio"],
-        p["cliente"],
-        p["telefono"],
-        p["total"],
-        p["estado"],
-        p["repartidor"]
-    ))
+    INSERT INTO pedidos (cliente, telefono, total, estado, repartidor)
+    VALUES (%s,%s,%s,%s,%s)
+    RETURNING folio
+    """, (p["cliente"], p["telefono"], p["total"], p["estado"], p["repartidor"]))
+
+    folio = cur.fetchone()[0]
 
     conn.commit()
     cur.close()
     conn.close()
 
+    return folio
+
 def obtener_pedidos():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT folio, cliente, telefono, total, estado, repartidor FROM pedidos ORDER BY id DESC")
+    cur.execute("SELECT folio, cliente, total, estado FROM pedidos ORDER BY id DESC")
     rows = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    pedidos = []
-    for r in rows:
-        pedidos.append({
-            "folio": r[0],
-            "cliente": r[1],
-            "telefono": r[2],
-            "total": r[3],
-            "estado": r[4],
-            "repartidor": r[5]
-        })
-
-    return pedidos
+    return [{"folio": r[0], "cliente": r[1], "total": r[2], "estado": r[3]} for r in rows]
 
 # =========================
 # WHATSAPP
@@ -103,70 +97,77 @@ def enviar(data):
     }
     requests.post(url, headers=headers, json=data)
 
-def enviar_mensaje(numero, texto):
+def enviar_texto(numero, texto):
     enviar({
         "messaging_product": "whatsapp",
         "to": numero,
         "text": {"body": texto}
     })
 
-# =========================
-# MENU
-# =========================
-MENU = {
-    "camarones": 180,
-    "pulpo": 220,
-    "filete": 160,
-    "coctel": 190,
-    "coca": 30,
-    "pepsi": 25
-}
-
 def enviar_menu(numero):
-    texto = "🍽️ MENÚ\n\n"
-    for k, v in MENU.items():
-        texto += f"• {k} - ${v}\n"
-
-    texto += "\nEscribe el nombre para agregar"
-    enviar_mensaje(numero, texto)
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": "🍽️ Selecciona tu pedido"},
+            "action": {
+                "button": "Ver menú",
+                "sections": [
+                    {
+                        "title": "Comida",
+                        "rows": [
+                            {"id": "camarones_diabla", "title": "Camarones a la diabla", "description": "$180"},
+                            {"id": "pulpo_diabla", "title": "Pulpo", "description": "$220"},
+                            {"id": "filete_diabla", "title": "Filete", "description": "$160"},
+                            {"id": "coctel_camaron", "title": "Coctel", "description": "$190"}
+                        ]
+                    },
+                    {
+                        "title": "Bebidas",
+                        "rows": [
+                            {"id": "coca", "title": "Coca Cola", "description": "$30"},
+                            {"id": "pepsi", "title": "Pepsi", "description": "$25"}
+                        ]
+                    }
+                ]
+            }
+        }
+    })
 
 # =========================
-# RUTAS
+# PANEL
 # =========================
-@app.route("/")
-def home():
-    return "🔥 Bot activo"
-
 @app.route("/panel")
 def panel():
-    pedidos = obtener_pedidos()
-    return render_template("panel.html", pedidos=pedidos)
+    return render_template("panel.html", pedidos=obtener_pedidos())
 
-@app.route("/pedidos")
-def pedidos():
-    return jsonify(obtener_pedidos())
+@app.route("/estado/<folio>/<estado>")
+def estado(folio, estado):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE pedidos SET estado=%s WHERE folio=%s", (estado, folio))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return "ok"
 
 # =========================
 # WEBHOOK
 # =========================
-@app.route("/webhook", methods=["GET", "POST"])
+@app.route("/webhook", methods=["GET","POST"])
 def webhook():
 
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
-        return "Error", 403
+        return "error", 403
 
     data = request.json
-    print("📩", data)
 
     try:
-        value = data["entry"][0]["changes"][0]["value"]
-
-        if "messages" not in value:
-            return "ok", 200
-
-        msg = value["messages"][0]
+        msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
         numero = msg["from"]
 
         if numero not in usuarios:
@@ -174,53 +175,41 @@ def webhook():
 
         u = usuarios[numero]
 
+        # BOTÓN / LISTA
+        if "interactive" in msg:
+            seleccion = msg["interactive"]["list_reply"]["id"]
+
+            if seleccion in MENU:
+                u["pedido"].append(MENU[seleccion])
+                enviar_texto(numero, f"✅ agregado\nEscribe ver o finalizar")
+
+        # TEXTO
         if "text" in msg:
             texto = msg["text"]["body"].lower()
 
-            # INICIO
-            if texto in ["hola", "menu"]:
+            if texto in ["hola","menu"]:
                 enviar_menu(numero)
-                return "ok", 200
 
-            # AGREGAR PRODUCTO
-            if texto in MENU:
-                u["pedido"].append({
-                    "nombre": texto,
-                    "precio": MENU[texto]
-                })
-                enviar_mensaje(numero, f"✅ {texto} agregado")
-                return "ok", 200
+            elif texto == "ver":
+                total = sum(u["pedido"])
+                enviar_texto(numero, f"🧾 Total: ${total}")
 
-            # VER PEDIDO
-            if texto == "ver":
-                total = sum(i["precio"] for i in u["pedido"])
-                enviar_mensaje(numero, f"🧾 Total: ${total}")
-                return "ok", 200
+            elif texto == "finalizar":
+                total = sum(u["pedido"])
 
-            # FINALIZAR
-            if texto == "finalizar":
-                total = sum(i["precio"] for i in u["pedido"])
-
-                folio = str(uuid.uuid4())[:8]
-
-                pedido = {
-                    "folio": folio,
+                folio = guardar_pedido({
                     "cliente": "Cliente",
                     "telefono": numero,
                     "total": total,
                     "estado": "nuevo",
                     "repartidor": "sin asignar"
-                }
+                })
 
-                guardar_pedido(pedido)
-
-                enviar_mensaje(numero, f"✅ Pedido #{folio} confirmado")
-
+                enviar_texto(numero, f"✅ Pedido #{folio} confirmado\n💰 ${total}")
                 usuarios[numero] = {"pedido": []}
-                return "ok", 200
 
     except Exception as e:
-        print("❌ ERROR:", e)
+        print("ERROR:", e)
 
     return "ok", 200
 
@@ -228,5 +217,6 @@ def webhook():
 # RUN
 # =========================
 if __name__ == "__main__":
+    init_db()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
