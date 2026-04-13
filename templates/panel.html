@@ -4,8 +4,10 @@
     <title>Panel</title>
 </head>
 <body>
-    <h1>🔥 PANEL FUNCIONANDO 🔥</h1>
 
+<h1>🔥 PANEL FUNCIONANDO 🔥</h1>
+
+{% if pedidos %}
     {% for p in pedidos %}
         <div style="border:1px solid #ccc; margin:10px; padding:10px;">
             <b>Pedido:</b> {{p.folio}} <br>
@@ -14,5 +16,9 @@
             <b>Estado:</b> {{p.estado}}
         </div>
     {% endfor %}
+{% else %}
+    <h2>❌ No hay pedidos todavía</h2>
+{% endif %}
+
 </body>
 </html>
