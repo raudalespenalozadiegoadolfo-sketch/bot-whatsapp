@@ -1,12 +1,105 @@
-<script defer>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Panel PRO</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #f5f5f5;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 20px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            width: 150px;
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+        }
+
+        .columns {
+            display: flex;
+            justify-content: space-around;
+        }
+
+        .col {
+            width: 22%;
+        }
+
+        .pedido {
+            background: white;
+            margin: 10px;
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        button {
+            margin: 5px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .prep { background: orange; }
+        .env { background: blue; color: white; }
+        .ent { background: green; color: white; }
+    </style>
+</head>
+
+<body>
+
+<h1>🔥 PANEL PRO 🔥</h1>
+
+<div class="stats">
+    <div class="card">Ventas: <span id="ventas">0</span></div>
+    <div class="card">Pedidos: <span id="pedidos">0</span></div>
+    <div class="card">Preparando: <span id="prep">0</span></div>
+    <div class="card">Enviados: <span id="env">0</span></div>
+</div>
+
+<div class="columns">
+
+    <div class="col">
+        <h3>🆕 Nuevos</h3>
+        <div id="nuevo"></div>
+    </div>
+
+    <div class="col">
+        <h3>🍳 Preparando</h3>
+        <div id="preparando"></div>
+    </div>
+
+    <div class="col">
+        <h3>🚚 Enviados</h3>
+        <div id="enviado"></div>
+    </div>
+
+    <div class="col">
+        <h3>✅ Entregados</h3>
+        <div id="entregado"></div>
+    </div>
+
+</div>
+
+<script>
 async function cargar() {
-
     try {
-
         let res = await fetch("/pedidos");
         let data = await res.json();
 
-        console.log("PEDIDOS:", data);
+        console.log(data);
 
         document.getElementById("nuevo").innerHTML = "";
         document.getElementById("preparando").innerHTML = "";
@@ -39,7 +132,6 @@ async function cargar() {
 
         });
 
-        // STATS
         let s = await fetch("/stats");
         let stats = await s.json();
 
@@ -49,15 +141,18 @@ async function cargar() {
         document.getElementById("env").innerText = stats.enviados;
 
     } catch (e) {
-        console.error("ERROR PANEL:", e);
+        console.error("ERROR:", e);
     }
 }
 
 function estado(id, estadoPedido) {
-    fetch(/estado/${id}/${estadoPedido})
+    fetch(`/estado/${id}/${estadoPedido}`)
         .then(() => cargar());
 }
 
 setInterval(cargar, 3000);
 cargar();
 </script>
+
+</body>
+</html>
