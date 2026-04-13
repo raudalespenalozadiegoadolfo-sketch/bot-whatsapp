@@ -1,154 +1,63 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Panel PRO</title>
-    <style>
-        body {
-            font-family: Arial;
-            background: #f5f5f5;
-            text-align: center;
-        }
-
-        h1 {
-            margin: 20px;
-        }
-
-        .stats {
-            display: flex;
-            justify-content: space-around;
-            margin: 20px;
-        }
-
-        .card {
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            width: 150px;
-            box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
-        }
-
-        .columns {
-            display: flex;
-            justify-content: space-around;
-        }
-
-        .col {
-            width: 22%;
-        }
-
-        .pedido {
-            background: white;
-            margin: 10px;
-            padding: 10px;
-            border-radius: 10px;
-            box-shadow: 0px 0px 5px rgba(0,0,0,0.1);
-        }
-
-        button {
-            margin: 5px;
-            padding: 5px 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        .prep { background: orange; }
-        .env { background: blue; color: white; }
-        .ent { background: green; color: white; }
-    </style>
-</head>
-<body>
-
-<h1>🔥 PANEL PRO 🔥</h1>
-
-<div class="stats">
-    <div class="card">Ventas: <span id="ventas">0</span></div>
-    <div class="card">Pedidos: <span id="pedidos">0</span></div>
-    <div class="card">Preparando: <span id="prep">0</span></div>
-    <div class="card">Enviados: <span id="env">0</span></div>
-</div>
-
-<div class="columns">
-    <div class="col">
-        <h3>🆕 Nuevos</h3>
-        <div id="nuevo"></div>
-    </div>
-
-    <div class="col">
-        <h3>👨‍🍳 Preparando</h3>
-        <div id="preparando"></div>
-    </div>
-
-    <div class="col">
-        <h3>🚚 Enviados</h3>
-        <div id="enviado"></div>
-    </div>
-
-    <div class="col">
-        <h3>✅ Entregados</h3>
-        <div id="entregado"></div>
-    </div>
-</div>
-
-<script>
+<script defer>
 async function cargar() {
 
-    console.log("CARGANDO PEDIDOS...");
+    try {
 
-    let res = await fetch("/pedidos");
-    let data = await res.json();
+        let res = await fetch("/pedidos");
+        let data = await res.json();
 
-    console.log(data);
-    
-    document.getElementById("nuevo").innerHTML = "";
-    document.getElementById("preparando").innerHTML = "";
-    document.getElementById("enviado").innerHTML = "";
-    document.getElementById("entregado").innerHTML = "";
+        console.log("PEDIDOS:", data);
 
-    data.forEach(p => {
-        let html = `
-            <div class="pedido">
-                <b>#${p.folio}</b><br>
-                ${p.cliente}<br>
-                $${p.total}<br>
-                <button class="prep" onclick="estado(${p.folio},'preparando')">Preparando</button>
-                <button class="env" onclick="estado(${p.folio},'enviado')">Enviar</button>
-                <button class="ent" onclick="estado(${p.folio},'entregado')">Entregar</button>
-            </div>
-        `;
+        document.getElementById("nuevo").innerHTML = "";
+        document.getElementById("preparando").innerHTML = "";
+        document.getElementById("enviado").innerHTML = "";
+        document.getElementById("entregado").innerHTML = "";
 
-        if (p.estado == "nuevo") {
-            document.getElementById("nuevo").innerHTML += html;
-        }
-        else if (p.estado == "preparando") {
-            document.getElementById("preparando").innerHTML += html;
-        }
-        else if (p.estado == "enviado") {
-            document.getElementById("enviado").innerHTML += html;
-        }
-        else {
-            document.getElementById("entregado").innerHTML += html;
-        }
-    });
+        data.forEach(p => {
 
-    // STATS
-    let s = await fetch("/stats");
-    let stats = await s.json();
+            let html = `
+                <div class="pedido">
+                    <b>#${p.folio}</b><br>
+                    ${p.cliente}<br>
+                    💰 $${p.total}<br>
 
-    document.getElementById("ventas").innerText = stats.ventas;
-    document.getElementById("pedidos").innerText = stats.pedidos;
-    document.getElementById("prep").innerText = stats.preparando;
-    document.getElementById("env").innerText = stats.enviados;
+                    <button class="prep" onclick="estado(${p.folio}, 'preparando')">Preparando</button>
+                    <button class="env" onclick="estado(${p.folio}, 'enviado')">Enviar</button>
+                    <button class="ent" onclick="estado(${p.folio}, 'entregado')">Entregar</button>
+                </div>
+            `;
+
+            if (p.estado === "nuevo") {
+                document.getElementById("nuevo").innerHTML += html;
+            } else if (p.estado === "preparando") {
+                document.getElementById("preparando").innerHTML += html;
+            } else if (p.estado === "enviado") {
+                document.getElementById("enviado").innerHTML += html;
+            } else {
+                document.getElementById("entregado").innerHTML += html;
+            }
+
+        });
+
+        // STATS
+        let s = await fetch("/stats");
+        let stats = await s.json();
+
+        document.getElementById("ventas").innerText = stats.ventas;
+        document.getElementById("pedidos").innerText = stats.pedidos;
+        document.getElementById("prep").innerText = stats.preparando;
+        document.getElementById("env").innerText = stats.enviados;
+
+    } catch (e) {
+        console.error("ERROR PANEL:", e);
+    }
 }
 
-function estado(id, estado) {
-    fetch(/estado/${id}/${estado}).then(() => cargar());
-}
+function estado(id, estadoPedido) {
+    fetch(/estado/${id}/${estadoPedido})
+        .then(() => cargar());
 }
 
 setInterval(cargar, 3000);
 cargar();
-</script defer>
-
-</body>
-</html>
+</script>
