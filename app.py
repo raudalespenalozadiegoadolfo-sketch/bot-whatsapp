@@ -103,6 +103,17 @@ def obtener_pedidos():
     ]
 
 # =========================
+# TEST DB 🔥 (AQUÍ VA EL PASO)
+# =========================
+@app.route("/test-db")
+def test_db():
+    try:
+        init_db()
+        return "✅ DB funcionando correctamente"
+    except Exception as e:
+        return f"❌ Error DB: {e}"
+
+# =========================
 # STATS
 # =========================
 @app.route("/stats")
@@ -227,7 +238,6 @@ def webhook():
 
         u = usuarios[numero]
 
-        # BOTONES
         if "interactive" in msg:
             seleccion = msg["interactive"]["list_reply"]["id"]
 
@@ -235,7 +245,6 @@ def webhook():
                 u["pedido"].append(MENU[seleccion])
                 enviar_texto(numero, "✅ Agregado\nEscribe ver o finalizar")
 
-        # TEXTO
         if "text" in msg:
             texto = msg["text"]["body"].lower()
 
