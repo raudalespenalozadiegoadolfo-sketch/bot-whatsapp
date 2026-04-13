@@ -43,12 +43,11 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS pedidos (
         id SERIAL PRIMARY KEY,
-        folio SERIAL,
         cliente TEXT,
         telefono TEXT,
         total INT,
-        estado TEXT,
-        repartidor TEXT
+        estado TEXT DEFAULT 'nuevo',
+        repartidor TEXT DEFAULT 'sin asignar'
     )
     """)
 
@@ -57,37 +56,54 @@ def init_db():
     conn.close()
 
 def guardar_pedido(p):
-    conn = get_db()
-    cur = conn.cursor()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
 
-    cur.execute("""
-    INSERT INTO pedidos (cliente, telefono, total, estado, repartidor)
-    VALUES (%s,%s,%s,%s,%s)
-    RETURNING folio
-    """, (p["cliente"], p["telefono"], p["total"], p["estado"], p["repartidor"]))
+        cur.execute("""
+        INSERT INTO pedidos (cliente, telefono, total, estado, repartidor)
+        VALUES (%s,%s,%s,%s,%s)
+        RETURNING id
+        """, (p["cliente"], p["telefono"], p["total"], p["estado"], p["repartidor"]))
 
-    folio = cur.fetchone()[0]
+        folio = cur.fetchone()[0]
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    return folio
+        return folio
+
+    except Exception as e:
+        print("ERROR GUARDAR:", e)
+        return None
 
 def obtener_pedidos():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT folio, cliente, total, estado FROM pedidos ORDER BY id DESC")
+    cur.execute("""
+    SELECT id, cliente, total, estado 
+    FROM pedidos 
+    ORDER BY id DESC
+    """)
+
     rows = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    return [{"folio": r[0], "cliente": r[1], "total": r[2], "estado": r[3]} for r in rows]
+    return [
+        {
+            "folio": r[0],
+            "cliente": r[1],
+            "total": r[2],
+            "estado": r[3]
+        } for r in rows
+    ]
 
 # =========================
-# STATS 🔥
+# STATS
 # =========================
 @app.route("/stats")
 def stats():
@@ -178,7 +194,7 @@ def pedidos():
 def estado(folio, estado):
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("UPDATE pedidos SET estado=%s WHERE folio=%s", (estado, folio))
+    cur.execute("UPDATE pedidos SET estado=%s WHERE id=%s", (estado, folio))
     conn.commit()
     cur.close()
     conn.close()
@@ -200,7 +216,6 @@ def webhook():
     try:
         value = data["entry"][0]["changes"][0]["value"]
 
-        # 🔴 SOLUCIÓN ERROR 'messages'
         if "messages" not in value:
             return "ok", 200
 
@@ -247,11 +262,10 @@ def webhook():
                     "repartidor": "sin asignar"
                 })
 
-                # 🔥 FIX folio None
-                if folio is None:
-                    enviar_texto(numero, "❌ Error al guardar pedido")
-                else:
+                if folio:
                     enviar_texto(numero, f"✅ Pedido #{folio} confirmado\n💰 ${total}")
+                else:
+                    enviar_texto(numero, "❌ Error al guardar pedido")
 
                 usuarios[numero] = {"pedido": []}
 
