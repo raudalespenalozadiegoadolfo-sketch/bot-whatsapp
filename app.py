@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify, render_template
-import requests, os, psycopg2
+import requests
+import os
+import psycopg2
 
 app = Flask(__name__)
 
@@ -64,7 +66,13 @@ def guardar_pedido(p):
         INSERT INTO pedidos (cliente, telefono, total, estado, repartidor)
         VALUES (%s,%s,%s,%s,%s)
         RETURNING id
-        """, (p["cliente"], p["telefono"], p["total"], p["estado"], p["repartidor"]))
+        """, (
+            p["cliente"],
+            p["telefono"],
+            p["total"],
+            p["estado"],
+            p["repartidor"]
+        ))
 
         folio = cur.fetchone()[0]
 
@@ -83,8 +91,8 @@ def obtener_pedidos():
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT id, cliente, total, estado 
-    FROM pedidos 
+    SELECT id, cliente, telefono, total, estado
+    FROM pedidos
     ORDER BY id DESC
     """)
 
@@ -97,13 +105,15 @@ def obtener_pedidos():
         {
             "folio": r[0],
             "cliente": r[1],
-            "total": r[2],
-            "estado": r[3]
-        } for r in rows
+            "telefono": r[2],
+            "total": r[3],
+            "estado": r[4]
+        }
+        for r in rows
     ]
 
 # =========================
-# TEST DB 🔥 (AQUÍ VA EL PASO)
+# TEST DB
 # =========================
 @app.route("/test-db")
 def test_db():
@@ -133,22 +143,24 @@ def stats():
     cur.close()
     conn.close()
 
-    return {
+    return jsonify({
         "pedidos": pedidos,
         "ventas": ventas,
         "preparando": preparando,
         "enviados": enviados
-    }
+    })
 
 # =========================
 # WHATSAPP
 # =========================
 def enviar(data):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+
     headers = {
         "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
     }
+
     requests.post(url, headers=headers, json=data)
 
 def enviar_texto(numero, texto):
@@ -193,6 +205,10 @@ def enviar_menu(numero):
 # =========================
 # PANEL
 # =========================
+@app.route("/")
+def home():
+    return "Servidor activo 🔥"
+
 @app.route("/panel")
 def panel():
     return render_template("panel.html")
@@ -201,20 +217,56 @@ def panel():
 def pedidos():
     return jsonify(obtener_pedidos())
 
+# =========================
+# NUEVO PEDIDO MANUAL
+# =========================
+@app.route("/nuevo_manual", methods=["POST"])
+def nuevo_manual():
+    try:
+        data = request.json
+
+        cliente = data.get("cliente", "Cliente")
+        telefono = data.get("telefono", "")
+        total = data.get("total", 0)
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+        INSERT INTO pedidos (cliente, telefono, total, estado, repartidor)
+        VALUES (%s,%s,%s,'nuevo','sin asignar')
+        """, (cliente, telefono, total))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({"ok": True})
+
+    except Exception as e:
+        print("ERROR NUEVO MANUAL:", e)
+        return jsonify({"ok": False})
+
 @app.route("/estado/<folio>/<estado>")
 def estado(folio, estado):
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("UPDATE pedidos SET estado=%s WHERE id=%s", (estado, folio))
+
+    cur.execute(
+        "UPDATE pedidos SET estado=%s WHERE id=%s",
+        (estado, folio)
+    )
+
     conn.commit()
     cur.close()
     conn.close()
+
     return "ok"
 
 # =========================
 # WEBHOOK
 # =========================
-@app.route("/webhook", methods=["GET","POST"])
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
 
     if request.method == "GET":
@@ -238,6 +290,7 @@ def webhook():
 
         u = usuarios[numero]
 
+        # BOTONES
         if "interactive" in msg:
             seleccion = msg["interactive"]["list_reply"]["id"]
 
@@ -245,10 +298,11 @@ def webhook():
                 u["pedido"].append(MENU[seleccion])
                 enviar_texto(numero, "✅ Agregado\nEscribe ver o finalizar")
 
+        # TEXTO
         if "text" in msg:
             texto = msg["text"]["body"].lower()
 
-            if texto in ["hola","menu"]:
+            if texto in ["hola", "menu"]:
                 enviar_menu(numero)
 
             elif texto == "ver":
@@ -272,7 +326,10 @@ def webhook():
                 })
 
                 if folio:
-                    enviar_texto(numero, f"✅ Pedido #{folio} confirmado\n💰 ${total}")
+                    enviar_texto(
+                        numero,
+                        f"✅ Pedido #{folio} confirmado\n💰 ${total}"
+                    )
                 else:
                     enviar_texto(numero, "❌ Error al guardar pedido")
 
