@@ -1,66 +1,120 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Panel PRO</title>
+<title>Panel PRO</title>
 
-    <style>
-        body {
-            font-family: Arial;
-            background: #f5f5f5;
-            text-align: center;
-        }
+<style>
+body{
+    font-family:Arial;
+    background:#f5f5f5;
+    text-align:center;
+    margin:0;
+    padding:20px;
+}
 
-        h1 {
-            margin: 20px;
-        }
+h1{
+    margin:20px;
+}
 
-        .stats {
-            display: flex;
-            justify-content: space-around;
-            margin: 20px;
-        }
+.topbar{
+    display:flex;
+    justify-content:center;
+    gap:15px;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+}
 
-        .card {
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            width: 150px;
-            box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
-        }
+.stats{
+    display:flex;
+    justify-content:space-around;
+    gap:15px;
+    flex-wrap:wrap;
+    margin-bottom:25px;
+}
 
-        .columns {
-            display: flex;
-            justify-content: space-around;
-        }
+.card{
+    background:white;
+    padding:15px;
+    border-radius:10px;
+    width:160px;
+    box-shadow:0 0 10px rgba(0,0,0,.1);
+}
 
-        .col {
-            width: 22%;
-        }
+.columns{
+    display:flex;
+    justify-content:space-around;
+    gap:10px;
+    flex-wrap:wrap;
+}
 
-        .pedido {
-            background: white;
-            margin: 10px;
-            padding: 10px;
-            border-radius: 10px;
-        }
+.col{
+    width:23%;
+    min-width:250px;
+}
 
-        button {
-            margin: 5px;
-            padding: 5px 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
+.pedido{
+    background:white;
+    margin:10px;
+    padding:12px;
+    border-radius:10px;
+    box-shadow:0 0 8px rgba(0,0,0,.08);
+}
 
-        .prep { background: orange; }
-        .env { background: blue; color: white; }
-        .ent { background: green; color: white; }
-    </style>
+button{
+    margin:4px;
+    padding:7px 10px;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+    font-size:13px;
+}
+
+.prep{ background:orange; color:black; }
+.env{ background:#0066ff; color:white; }
+.ent{ background:green; color:white; }
+.add{ background:#111; color:white; }
+
+input{
+    padding:8px;
+    margin:5px;
+    border-radius:6px;
+    border:1px solid #ccc;
+}
+
+.modal{
+    display:none;
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,.5);
+}
+
+.modal-box{
+    background:white;
+    width:90%;
+    max-width:420px;
+    margin:60px auto;
+    padding:20px;
+    border-radius:12px;
+}
+
+select{
+    padding:8px;
+    width:90%;
+    margin:5px;
+}
+</style>
 </head>
 
 <body>
 
 <h1>🔥 PANEL PRO 🔥</h1>
+
+<div class="topbar">
+    <button class="add" onclick="abrirModal()">➕ Pedido Manual</button>
+</div>
 
 <div class="stats">
     <div class="card">Ventas: <span id="ventas">0</span></div>
@@ -71,87 +125,172 @@
 
 <div class="columns">
 
-    <div class="col">
-        <h3>🆕 Nuevos</h3>
-        <div id="nuevo"></div>
-    </div>
+<div class="col">
+<h3>🆕 Nuevos</h3>
+<div id="nuevo"></div>
+</div>
 
-    <div class="col">
-        <h3>🍳 Preparando</h3>
-        <div id="preparando"></div>
-    </div>
+<div class="col">
+<h3>🍳 Preparando</h3>
+<div id="preparando"></div>
+</div>
 
-    <div class="col">
-        <h3>🚚 Enviados</h3>
-        <div id="enviado"></div>
-    </div>
+<div class="col">
+<h3>🚚 Enviados</h3>
+<div id="enviado"></div>
+</div>
 
-    <div class="col">
-        <h3>✅ Entregados</h3>
-        <div id="entregado"></div>
-    </div>
+<div class="col">
+<h3>✅ Entregados</h3>
+<div id="entregado"></div>
+</div>
 
 </div>
 
+<!-- MODAL -->
+<div class="modal" id="modal">
+<div class="modal-box">
+
+<h2>Nuevo Pedido</h2>
+
+<input id="cliente" placeholder="Nombre"><br>
+<input id="telefono" placeholder="Teléfono"><br>
+
+<select id="producto">
+<option value="180">Ceviche Pescado - $180</option>
+<option value="200">Ceviche Camarón - $200</option>
+<option value="190">Aguachile Verde - $190</option>
+<option value="220">Coctel Mixto - $220</option>
+<option value="30">Coca Cola - $30</option>
+<option value="25">Pepsi - $25</option>
+</select><br>
+
+<input id="cantidad" type="number" value="1" min="1"><br>
+
+<button class="prep" onclick="guardarManual()">Guardar</button>
+<button onclick="cerrarModal()">Cerrar</button>
+
+</div>
+</div>
+
 <script>
-async function cargar() {
-    try {
-        let res = await fetch("/pedidos");
-        let data = await res.json();
 
-        console.log(data);
-
-        document.getElementById("nuevo").innerHTML = "";
-        document.getElementById("preparando").innerHTML = "";
-        document.getElementById("enviado").innerHTML = "";
-        document.getElementById("entregado").innerHTML = "";
-
-        data.forEach(p => {
-
-            let html = `
-                <div class="pedido">
-                    <b>#${p.folio}</b><br>
-                    ${p.cliente}<br>
-                    💰 $${p.total}<br>
-
-                    <button class="prep" onclick="estado(${p.folio}, 'preparando')">Preparando</button>
-                    <button class="env" onclick="estado(${p.folio}, 'enviado')">Enviar</button>
-                    <button class="ent" onclick="estado(${p.folio}, 'entregado')">Entregar</button>
-                </div>
-            `;
-
-            if (p.estado === "nuevo") {
-                document.getElementById("nuevo").innerHTML += html;
-            } else if (p.estado === "preparando") {
-                document.getElementById("preparando").innerHTML += html;
-            } else if (p.estado === "enviado") {
-                document.getElementById("enviado").innerHTML += html;
-            } else {
-                document.getElementById("entregado").innerHTML += html;
-            }
-
-        });
-
-        let s = await fetch("/stats");
-        let stats = await s.json();
-
-        document.getElementById("ventas").innerText = stats.ventas;
-        document.getElementById("pedidos").innerText = stats.pedidos;
-        document.getElementById("prep").innerText = stats.preparando;
-        document.getElementById("env").innerText = stats.enviados;
-
-    } catch (e) {
-        console.error("ERROR:", e);
-    }
+function abrirModal(){
+document.getElementById("modal").style.display="block";
 }
 
-function estado(id, estadoPedido) {
-    fetch(`/estado/${id}/${estadoPedido}`)
-        .then(() => cargar());
+function cerrarModal(){
+document.getElementById("modal").style.display="none";
 }
 
-setInterval(cargar, 3000);
+async function guardarManual(){
+
+let cliente=document.getElementById("cliente").value;
+let telefono=document.getElementById("telefono").value;
+let precio=parseInt(document.getElementById("producto").value);
+let cantidad=parseInt(document.getElementById("cantidad").value);
+
+let total=precio*cantidad;
+
+await fetch("/nuevo_manual",{
+method:"POST",
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+cliente:cliente,
+telefono:telefono,
+total:total
+})
+});
+
+cerrarModal();
 cargar();
+}
+
+async function cargar(){
+
+try{
+
+let res=await fetch("/pedidos");
+let data=await res.json();
+
+document.getElementById("nuevo").innerHTML="";
+document.getElementById("preparando").innerHTML="";
+document.getElementById("enviado").innerHTML="";
+document.getElementById("entregado").innerHTML="";
+
+data.forEach(p=>{
+
+let botones="";
+
+if(p.estado=="nuevo"){
+botones=`
+<button class="prep" onclick="estado(${p.folio},'preparando')">Preparando</button>
+`;
+}
+
+else if(p.estado=="preparando"){
+botones=`
+<button class="env" onclick="estado(${p.folio},'enviado')">Enviar</button>
+`;
+}
+
+else if(p.estado=="enviado"){
+botones=`
+<button class="ent" onclick="estado(${p.folio},'entregado')">Entregar</button>
+`;
+}
+
+else{
+botones=`<small>Finalizado</small>`;
+}
+
+let html=`
+<div class="pedido">
+<b>#${p.folio}</b><br>
+${p.cliente}<br>
+📞 ${p.telefono || ''}<br>
+💰 $${p.total}<br>
+${botones}
+</div>
+`;
+
+if(p.estado=="nuevo"){
+document.getElementById("nuevo").innerHTML+=html;
+}
+else if(p.estado=="preparando"){
+document.getElementById("preparando").innerHTML+=html;
+}
+else if(p.estado=="enviado"){
+document.getElementById("enviado").innerHTML+=html;
+}
+else{
+document.getElementById("entregado").innerHTML+=html;
+}
+
+});
+
+let s=await fetch("/stats");
+let stats=await s.json();
+
+document.getElementById("ventas").innerText=stats.ventas;
+document.getElementById("pedidos").innerText=stats.pedidos;
+document.getElementById("prep").innerText=stats.preparando;
+document.getElementById("env").innerText=stats.enviados;
+
+}catch(e){
+console.log(e);
+}
+
+}
+
+function estado(id,estadoPedido){
+fetch(`/estado/${id}/${estadoPedido}`)
+.then(()=>cargar());
+}
+
+setInterval(cargar,3000);
+cargar();
+
 </script>
 
 </body>
