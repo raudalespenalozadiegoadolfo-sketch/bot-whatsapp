@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template
 import requests
 import os
 import psycopg2
+import json
 
 app = Flask(__name__)
 
@@ -19,17 +20,13 @@ usuarios = {}
 # MENU
 # =========================
 MENU = {
-    "camarones_diabla": 180,
-    "camarones_empanizados": 190,
-    "camarones_ajo": 180,
-    "pulpo_diabla": 220,
-    "pulpo_empanizado": 220,
-    "filete_diabla": 160,
-    "filete_empanizado": 170,
-    "coctel_camaron": 190,
-    "coctel_pulpo": 200,
-    "coca": 30,
-    "pepsi": 25
+    "camarones_diabla": {"nombre": "Camarones Diabla", "precio": 180},
+    "camarones_empanizados": {"nombre": "Camarones Empanizados", "precio": 190},
+    "pulpo_diabla": {"nombre": "Pulpo Diabla", "precio": 220},
+    "filete_diabla": {"nombre": "Filete Diabla", "precio": 160},
+    "coctel_camaron": {"nombre": "Coctel Camarón", "precio": 190},
+    "coca": {"nombre": "Coca Cola", "precio": 30},
+    "pepsi": {"nombre": "Pepsi", "precio": 25}
 }
 
 # =========================
@@ -47,9 +44,11 @@ def init_db():
         id SERIAL PRIMARY KEY,
         cliente TEXT,
         telefono TEXT,
+        direccion TEXT,
         total INT,
         estado TEXT DEFAULT 'nuevo',
-        repartidor TEXT DEFAULT 'sin asignar'
+        repartidor TEXT DEFAULT 'sin asignar',
+        detalle JSON
     )
     """)
 
@@ -57,21 +56,26 @@ def init_db():
     cur.close()
     conn.close()
 
+# =========================
+# GUARDAR PEDIDO
+# =========================
 def guardar_pedido(p):
     try:
         conn = get_db()
         cur = conn.cursor()
 
         cur.execute("""
-        INSERT INTO pedidos (cliente, telefono, total, estado, repartidor)
-        VALUES (%s,%s,%s,%s,%s)
+        INSERT INTO pedidos (cliente, telefono, direccion, total, estado, repartidor, detalle)
+        VALUES (%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
         """, (
             p["cliente"],
             p["telefono"],
+            p.get("direccion", ""),
             p["total"],
             p["estado"],
-            p["repartidor"]
+            p["repartidor"],
+            json.dumps(p.get("items", []))
         ))
 
         folio = cur.fetchone()[0]
@@ -86,12 +90,15 @@ def guardar_pedido(p):
         print("ERROR GUARDAR:", e)
         return None
 
+# =========================
+# OBTENER PEDIDOS
+# =========================
 def obtener_pedidos():
     conn = get_db()
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT id, cliente, telefono, total, estado
+    SELECT id, cliente, telefono, direccion, total, estado, detalle
     FROM pedidos
     ORDER BY id DESC
     """)
@@ -106,22 +113,13 @@ def obtener_pedidos():
             "folio": r[0],
             "cliente": r[1],
             "telefono": r[2],
-            "total": r[3],
-            "estado": r[4]
+            "direccion": r[3],
+            "total": r[4],
+            "estado": r[5],
+            "detalle": r[6] or []
         }
         for r in rows
     ]
-
-# =========================
-# TEST DB
-# =========================
-@app.route("/test-db")
-def test_db():
-    try:
-        init_db()
-        return "✅ DB funcionando correctamente"
-    except Exception as e:
-        return f"❌ Error DB: {e}"
 
 # =========================
 # STATS
@@ -151,56 +149,35 @@ def stats():
     })
 
 # =========================
-# WHATSAPP
+# TOP PRODUCTOS 🔥
 # =========================
-def enviar(data):
-    url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+@app.route("/top")
+def top_productos():
+    conn = get_db()
+    cur = conn.cursor()
 
-    headers = {
-        "Authorization": f"Bearer {TOKEN}",
-        "Content-Type": "application/json"
-    }
+    cur.execute("SELECT detalle FROM pedidos")
+    rows = cur.fetchall()
 
-    requests.post(url, headers=headers, json=data)
+    conteo = {}
 
-def enviar_texto(numero, texto):
-    enviar({
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "text": {"body": texto}
-    })
+    for r in rows:
+        if r[0]:
+            for item in r[0]:
+                nombre = item["nombre"]
+                cantidad = item["cantidad"]
 
-def enviar_menu(numero):
-    enviar({
-        "messaging_product": "whatsapp",
-        "to": numero,
-        "type": "interactive",
-        "interactive": {
-            "type": "list",
-            "body": {"text": "🍽️ Selecciona tu pedido"},
-            "action": {
-                "button": "Ver menú",
-                "sections": [
-                    {
-                        "title": "Comida",
-                        "rows": [
-                            {"id": "camarones_diabla", "title": "Camarones", "description": "$180"},
-                            {"id": "pulpo_diabla", "title": "Pulpo", "description": "$220"},
-                            {"id": "filete_diabla", "title": "Filete", "description": "$160"},
-                            {"id": "coctel_camaron", "title": "Coctel", "description": "$190"}
-                        ]
-                    },
-                    {
-                        "title": "Bebidas",
-                        "rows": [
-                            {"id": "coca", "title": "Coca Cola", "description": "$30"},
-                            {"id": "pepsi", "title": "Pepsi", "description": "$25"}
-                        ]
-                    }
-                ]
-            }
-        }
-    })
+                if nombre not in conteo:
+                    conteo[nombre] = 0
+
+                conteo[nombre] += cantidad
+
+    top = sorted(conteo.items(), key=lambda x: x[1], reverse=True)
+
+    cur.close()
+    conn.close()
+
+    return jsonify(top[:5])
 
 # =========================
 # PANEL
@@ -218,44 +195,33 @@ def pedidos():
     return jsonify(obtener_pedidos())
 
 # =========================
-# NUEVO PEDIDO MANUAL
+# PEDIDO MANUAL
 # =========================
 @app.route("/nuevo_manual", methods=["POST"])
 def nuevo_manual():
-    try:
-        data = request.json
+    data = request.json
 
-        cliente = data.get("cliente", "Cliente")
-        telefono = data.get("telefono", "")
-        total = data.get("total", 0)
+    guardar_pedido({
+        "cliente": data.get("cliente"),
+        "telefono": data.get("telefono"),
+        "direccion": data.get("direccion"),
+        "total": data.get("total"),
+        "estado": "nuevo",
+        "repartidor": "sin asignar",
+        "items": data.get("items", [])
+    })
 
-        conn = get_db()
-        cur = conn.cursor()
+    return jsonify({"ok": True})
 
-        cur.execute("""
-        INSERT INTO pedidos (cliente, telefono, total, estado, repartidor)
-        VALUES (%s,%s,%s,'nuevo','sin asignar')
-        """, (cliente, telefono, total))
-
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        return jsonify({"ok": True})
-
-    except Exception as e:
-        print("ERROR NUEVO MANUAL:", e)
-        return jsonify({"ok": False})
-
+# =========================
+# ESTADO
+# =========================
 @app.route("/estado/<folio>/<estado>")
 def estado(folio, estado):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(
-        "UPDATE pedidos SET estado=%s WHERE id=%s",
-        (estado, folio)
-    )
+    cur.execute("UPDATE pedidos SET estado=%s WHERE id=%s", (estado, folio))
 
     conn.commit()
     cur.close()
@@ -264,9 +230,27 @@ def estado(folio, estado):
     return "ok"
 
 # =========================
+# WHATSAPP
+# =========================
+def enviar(data):
+    url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "Content-Type": "application/json"
+    }
+    requests.post(url, headers=headers, json=data)
+
+def enviar_texto(numero, texto):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "text": {"body": texto}
+    })
+
+# =========================
 # WEBHOOK
 # =========================
-@app.route("/webhook", methods=["GET", "POST"])
+@app.route("/webhook", methods=["GET","POST"])
 def webhook():
 
     if request.method == "GET":
@@ -286,54 +270,48 @@ def webhook():
         numero = msg["from"]
 
         if numero not in usuarios:
-            usuarios[numero] = {"pedido": []}
+            usuarios[numero] = {"items": []}
 
         u = usuarios[numero]
 
-        # BOTONES
         if "interactive" in msg:
             seleccion = msg["interactive"]["list_reply"]["id"]
 
             if seleccion in MENU:
-                u["pedido"].append(MENU[seleccion])
-                enviar_texto(numero, "✅ Agregado\nEscribe ver o finalizar")
+                producto = MENU[seleccion]
 
-        # TEXTO
+                u["items"].append({
+                    "nombre": producto["nombre"],
+                    "precio": producto["precio"],
+                    "cantidad": 1
+                })
+
+                enviar_texto(numero, "✅ Agregado\nEscribe finalizar")
+
         if "text" in msg:
             texto = msg["text"]["body"].lower()
 
-            if texto in ["hola", "menu"]:
-                enviar_menu(numero)
+            if texto == "finalizar":
 
-            elif texto == "ver":
-                total = sum(u["pedido"])
-                enviar_texto(numero, f"🧾 Total: ${total}")
-
-            elif texto == "finalizar":
-
-                if len(u["pedido"]) == 0:
+                if len(u["items"]) == 0:
                     enviar_texto(numero, "⚠️ No tienes productos")
                     return "ok", 200
 
-                total = sum(u["pedido"])
+                total = sum(i["precio"] * i["cantidad"] for i in u["items"])
 
                 folio = guardar_pedido({
                     "cliente": "Cliente",
                     "telefono": numero,
+                    "direccion": "",
                     "total": total,
                     "estado": "nuevo",
-                    "repartidor": "sin asignar"
+                    "repartidor": "sin asignar",
+                    "items": u["items"]
                 })
 
-                if folio:
-                    enviar_texto(
-                        numero,
-                        f"✅ Pedido #{folio} confirmado\n💰 ${total}"
-                    )
-                else:
-                    enviar_texto(numero, "❌ Error al guardar pedido")
+                enviar_texto(numero, f"✅ Pedido #{folio}\n💰 ${total}")
 
-                usuarios[numero] = {"pedido": []}
+                usuarios[numero] = {"items": []}
 
     except Exception as e:
         print("ERROR WEBHOOK:", e)
