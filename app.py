@@ -17,14 +17,22 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 usuarios = {}
 
 # =========================
-# MENU
+# MENU COMPLETO
 # =========================
 MENU = {
     "camarones_diabla": {"nombre": "Camarones Diabla", "precio": 180},
     "camarones_empanizados": {"nombre": "Camarones Empanizados", "precio": 190},
+    "camarones_ajo": {"nombre": "Camarones al Ajo", "precio": 180},
+
     "pulpo_diabla": {"nombre": "Pulpo Diabla", "precio": 220},
+    "pulpo_empanizado": {"nombre": "Pulpo Empanizado", "precio": 220},
+
     "filete_diabla": {"nombre": "Filete Diabla", "precio": 160},
+    "filete_empanizado": {"nombre": "Filete Empanizado", "precio": 170},
+
     "coctel_camaron": {"nombre": "Coctel Camarón", "precio": 190},
+    "coctel_pulpo": {"nombre": "Coctel Pulpo", "precio": 200},
+
     "coca": {"nombre": "Coca Cola", "precio": 30},
     "pepsi": {"nombre": "Pepsi", "precio": 25}
 }
@@ -60,35 +68,30 @@ def init_db():
 # GUARDAR PEDIDO
 # =========================
 def guardar_pedido(p):
-    try:
-        conn = get_db()
-        cur = conn.cursor()
+    conn = get_db()
+    cur = conn.cursor()
 
-        cur.execute("""
-        INSERT INTO pedidos (cliente, telefono, direccion, total, estado, repartidor, detalle)
-        VALUES (%s,%s,%s,%s,%s,%s,%s)
-        RETURNING id
-        """, (
-            p["cliente"],
-            p["telefono"],
-            p.get("direccion", ""),
-            p["total"],
-            p["estado"],
-            p["repartidor"],
-            json.dumps(p.get("items", []))
-        ))
+    cur.execute("""
+    INSERT INTO pedidos (cliente, telefono, direccion, total, estado, repartidor, detalle)
+    VALUES (%s,%s,%s,%s,%s,%s,%s)
+    RETURNING id
+    """, (
+        p["cliente"],
+        p["telefono"],
+        p["direccion"],
+        p["total"],
+        p["estado"],
+        p["repartidor"],
+        json.dumps(p["items"])
+    ))
 
-        folio = cur.fetchone()[0]
+    folio = cur.fetchone()[0]
 
-        conn.commit()
-        cur.close()
-        conn.close()
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        return folio
-
-    except Exception as e:
-        print("ERROR GUARDAR:", e)
-        return None
+    return folio
 
 # =========================
 # OBTENER PEDIDOS
@@ -149,43 +152,8 @@ def stats():
     })
 
 # =========================
-# TOP PRODUCTOS 🔥
-# =========================
-@app.route("/top")
-def top_productos():
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT detalle FROM pedidos")
-    rows = cur.fetchall()
-
-    conteo = {}
-
-    for r in rows:
-        if r[0]:
-            for item in r[0]:
-                nombre = item["nombre"]
-                cantidad = item["cantidad"]
-
-                if nombre not in conteo:
-                    conteo[nombre] = 0
-
-                conteo[nombre] += cantidad
-
-    top = sorted(conteo.items(), key=lambda x: x[1], reverse=True)
-
-    cur.close()
-    conn.close()
-
-    return jsonify(top[:5])
-
-# =========================
 # PANEL
 # =========================
-@app.route("/")
-def home():
-    return "Servidor activo 🔥"
-
 @app.route("/panel")
 def panel():
     return render_template("panel.html")
@@ -195,26 +163,7 @@ def pedidos():
     return jsonify(obtener_pedidos())
 
 # =========================
-# PEDIDO MANUAL
-# =========================
-@app.route("/nuevo_manual", methods=["POST"])
-def nuevo_manual():
-    data = request.json
-
-    guardar_pedido({
-        "cliente": data.get("cliente"),
-        "telefono": data.get("telefono"),
-        "direccion": data.get("direccion"),
-        "total": data.get("total"),
-        "estado": "nuevo",
-        "repartidor": "sin asignar",
-        "items": data.get("items", [])
-    })
-
-    return jsonify({"ok": True})
-
-# =========================
-# ESTADO
+# ESTADO PEDIDO
 # =========================
 @app.route("/estado/<folio>/<estado>")
 def estado(folio, estado):
@@ -230,7 +179,7 @@ def estado(folio, estado):
     return "ok"
 
 # =========================
-# WHATSAPP
+# ENVIO WHATSAPP
 # =========================
 def enviar(data):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
@@ -248,7 +197,40 @@ def enviar_texto(numero, texto):
     })
 
 # =========================
-# WEBHOOK
+# MENU WHATSAPP
+# =========================
+def enviar_menu(numero):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": "🍽️ Menú disponible"},
+            "action": {
+                "button": "Ver menú",
+                "sections": [
+                    {
+                        "title": "Comida",
+                        "rows": [
+                            {"id": k, "title": v["nombre"], "description": f"${v['precio']}"}
+                            for k, v in MENU.items() if v["precio"] > 50
+                        ]
+                    },
+                    {
+                        "title": "Bebidas",
+                        "rows": [
+                            {"id": k, "title": v["nombre"], "description": f"${v['precio']}"}
+                            for k, v in MENU.items() if v["precio"] <= 50
+                        ]
+                    }
+                ]
+            }
+        }
+    })
+
+# =========================
+# WEBHOOK PRO 🔥
 # =========================
 @app.route("/webhook", methods=["GET","POST"])
 def webhook():
@@ -270,10 +252,16 @@ def webhook():
         numero = msg["from"]
 
         if numero not in usuarios:
-            usuarios[numero] = {"items": []}
+            usuarios[numero] = {
+                "paso": "inicio",
+                "items": []
+            }
 
         u = usuarios[numero]
 
+        # =====================
+        # BOTONES
+        # =====================
         if "interactive" in msg:
             seleccion = msg["interactive"]["list_reply"]["id"]
 
@@ -286,35 +274,76 @@ def webhook():
                     "cantidad": 1
                 })
 
-                enviar_texto(numero, "✅ Agregado\nEscribe finalizar")
+                enviar_texto(numero, f"✅ {producto['nombre']} agregado\nEscribe 'menu' o 'finalizar'")
 
+        # =====================
+        # TEXTO
+        # =====================
         if "text" in msg:
             texto = msg["text"]["body"].lower()
 
-            if texto == "finalizar":
+            # INICIO
+            if texto in ["hola", "menu"]:
+                u["paso"] = "pedido"
+                enviar_menu(numero)
+
+            # FINALIZAR
+            elif texto == "finalizar":
 
                 if len(u["items"]) == 0:
                     enviar_texto(numero, "⚠️ No tienes productos")
                     return "ok", 200
 
-                total = sum(i["precio"] * i["cantidad"] for i in u["items"])
+                u["paso"] = "nombre"
+                enviar_texto(numero, "📝 Escribe tu nombre")
+
+            # NOMBRE
+            elif u["paso"] == "nombre":
+                u["cliente"] = texto
+                u["paso"] = "direccion"
+                enviar_texto(numero, "📍 Escribe tu dirección")
+
+            # DIRECCION
+            elif u["paso"] == "direccion":
+                u["direccion"] = texto
+
+                total = sum(i["precio"] for i in u["items"])
+
+                resumen = "🧾 Pedido:\n"
+                for i in u["items"]:
+                    resumen += f"- {i['nombre']} ${i['precio']}\n"
+
+                resumen += f"\n💰 Total: ${total}"
+                resumen += "\n\nEscribe 'confirmar' o 'cancelar'"
+
+                u["total"] = total
+                u["paso"] = "confirmar"
+
+                enviar_texto(numero, resumen)
+
+            # CONFIRMAR
+            elif texto == "confirmar" and u["paso"] == "confirmar":
 
                 folio = guardar_pedido({
-                    "cliente": "Cliente",
+                    "cliente": u["cliente"],
                     "telefono": numero,
-                    "direccion": "",
-                    "total": total,
+                    "direccion": u["direccion"],
+                    "total": u["total"],
                     "estado": "nuevo",
                     "repartidor": "sin asignar",
                     "items": u["items"]
                 })
 
-                enviar_texto(numero, f"✅ Pedido #{folio}\n💰 ${total}")
+                enviar_texto(numero, f"✅ Pedido #{folio} confirmado")
 
-                usuarios[numero] = {"items": []}
+                usuarios[numero] = {"paso": "inicio", "items": []}
+
+            elif texto == "cancelar":
+                usuarios[numero] = {"paso": "inicio", "items": []}
+                enviar_texto(numero, "❌ Pedido cancelado")
 
     except Exception as e:
-        print("ERROR WEBHOOK:", e)
+        print("ERROR:", e)
 
     return "ok", 200
 
