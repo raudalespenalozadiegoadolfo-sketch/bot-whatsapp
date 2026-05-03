@@ -3,7 +3,6 @@ import requests
 import os
 import psycopg2
 import json
-import traceback
 
 app = Flask(__name__)
 
@@ -18,34 +17,45 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 usuarios = {}
 
 # =========================
-# MENÚ COMPLETO
+# MENU COMPLETO
 # =========================
 MENU = {
-    "camarones": {
-        "diabla": ("Camarones a la Diabla", 180),
-        "empanizados": ("Camarones Empanizados", 190),
-        "ajo": ("Camarones al Ajo", 180)
-    },
-    "pulpo": {
-        "diabla": ("Pulpo a la Diabla", 220),
-        "empanizado": ("Pulpo Empanizado", 220),
-        "zarandeado": ("Pulpo Zarandeado", 220)
-    },
-    "filete": {
-        "diabla": ("Filete a la Diabla", 160),
-        "empanizado": ("Filete Empanizado", 170),
-        "ajo": ("Filete al Ajo", 170)
-    },
-    "coctel": {
-        "camaron": ("Coctel Camarón", 190),
-        "pulpo": ("Coctel Pulpo", 200),
-        "callo": ("Coctel Callo", 250),
-        "mixto": ("Coctel Mixto", 220)
-    },
-    "bebidas": {
-        "coca": ("Coca Cola", 30),
-        "pepsi": ("Pepsi", 25)
-    }
+
+    # CAMARONES
+    "cam_diabla": {"nombre": "Camarones a la Diabla", "precio": 180, "cat": "camarones"},
+    "cam_emp": {"nombre": "Camarones Empanizados", "precio": 190, "cat": "camarones"},
+    "cam_ajo": {"nombre": "Camarones al Ajo", "precio": 180, "cat": "camarones"},
+
+    # PULPO
+    "pulpo_diabla": {"nombre": "Pulpo a la Diabla", "precio": 220, "cat": "pulpo"},
+    "pulpo_emp": {"nombre": "Pulpo Empanizado", "precio": 220, "cat": "pulpo"},
+    "pulpo_zar": {"nombre": "Pulpo Zarandeado", "precio": 220, "cat": "pulpo"},
+
+    # FILETE
+    "filete_diabla": {"nombre": "Filete a la Diabla", "precio": 160, "cat": "filete"},
+    "filete_emp": {"nombre": "Filete Empanizado", "precio": 170, "cat": "filete"},
+    "filete_ajo": {"nombre": "Filete al Ajo", "precio": 170, "cat": "filete"},
+
+    # COCTEL
+    "coctel_cam": {"nombre": "Coctel Camarón", "precio": 190, "cat": "coctel"},
+    "coctel_pulpo": {"nombre": "Coctel Pulpo", "precio": 200, "cat": "coctel"},
+    "coctel_callo": {"nombre": "Coctel Callo", "precio": 250, "cat": "coctel"},
+    "coctel_mixto": {"nombre": "Coctel Mixto", "precio": 220, "cat": "coctel"},
+
+    # REFRESCOS
+    "coca": {"nombre": "Coca Cola", "precio": 30, "cat": "refrescos"},
+    "pepsi": {"nombre": "Pepsi", "precio": 25, "cat": "refrescos"},
+    "sangria": {"nombre": "Sangría", "precio": 25, "cat": "refrescos"},
+
+    # MICHELADAS
+    "michelada_cam": {"nombre": "Michelada Camarón", "precio": 100, "cat": "micheladas"},
+    "michelada_clam": {"nombre": "Michelada Clamato", "precio": 80, "cat": "micheladas"},
+    "michelada_tam": {"nombre": "Michelada Tamarindo", "precio": 90, "cat": "micheladas"},
+
+    # CERVEZAS
+    "corona": {"nombre": "Corona", "precio": 40, "cat": "cervezas"},
+    "tecate": {"nombre": "Tecate", "precio": 35, "cat": "cervezas"},
+    "indio": {"nombre": "Indio", "precio": 30, "cat": "cervezas"},
 }
 
 # =========================
@@ -66,6 +76,7 @@ def init_db():
         direccion TEXT,
         total INT,
         estado TEXT DEFAULT 'nuevo',
+        repartidor TEXT DEFAULT 'sin asignar',
         detalle JSON
     )
     """)
@@ -75,22 +86,23 @@ def init_db():
     conn.close()
 
 # =========================
-# GUARDAR PEDIDO
+# GUARDAR
 # =========================
 def guardar_pedido(p):
     conn = get_db()
     cur = conn.cursor()
 
     cur.execute("""
-    INSERT INTO pedidos (cliente, telefono, direccion, total, estado, detalle)
-    VALUES (%s,%s,%s,%s,%s,%s)
+    INSERT INTO pedidos (cliente, telefono, direccion, total, estado, repartidor, detalle)
+    VALUES (%s,%s,%s,%s,%s,%s,%s)
     RETURNING id
     """, (
         p["cliente"],
         p["telefono"],
         p["direccion"],
         p["total"],
-        p["estado"],
+        "nuevo",
+        "sin asignar",
         json.dumps(p["items"])
     ))
 
@@ -114,15 +126,14 @@ def pedidos():
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT * FROM pedidos ORDER BY id DESC")
+    cur.execute("SELECT id, cliente, telefono, direccion, total, estado, detalle FROM pedidos ORDER BY id DESC")
     rows = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    data = []
-    for r in rows:
-        data.append({
+    return jsonify([
+        {
             "folio": r[0],
             "cliente": r[1],
             "telefono": r[2],
@@ -130,39 +141,21 @@ def pedidos():
             "total": r[4],
             "estado": r[5],
             "detalle": r[6]
-        })
+        } for r in rows
+    ])
 
-    return jsonify(data)
-
-# =========================
-# STATS (FIX)
-# =========================
-@app.route("/stats")
-def stats():
+@app.route("/estado/<folio>/<estado>")
+def estado(folio, estado):
     conn = get_db()
     cur = conn.cursor()
-
-    cur.execute("SELECT COUNT(*), COALESCE(SUM(total),0) FROM pedidos")
-    pedidos, ventas = cur.fetchone()
-
-    cur.execute("SELECT COUNT(*) FROM pedidos WHERE estado='preparando'")
-    preparando = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM pedidos WHERE estado='enviado'")
-    enviados = cur.fetchone()[0]
-
+    cur.execute("UPDATE pedidos SET estado=%s WHERE id=%s", (estado, folio))
+    conn.commit()
     cur.close()
     conn.close()
-
-    return jsonify({
-        "pedidos": pedidos,
-        "ventas": ventas,
-        "preparando": preparando,
-        "enviados": enviados
-    })
+    return "ok"
 
 # =========================
-# WHATSAPP HELPERS
+# ENVIO
 # =========================
 def enviar(data):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
@@ -172,36 +165,104 @@ def enviar(data):
     }
     requests.post(url, headers=headers, json=data)
 
-def texto(num, msg):
+def texto(num, t):
     enviar({
         "messaging_product": "whatsapp",
         "to": num,
-        "text": {"body": msg}
+        "text": {"body": t}
     })
 
-def botones(num, texto_msg, botones_list):
+# =========================
+# MENUS
+# =========================
+def menu_inicio(num):
     enviar({
         "messaging_product": "whatsapp",
         "to": num,
         "type": "interactive",
         "interactive": {
             "type": "button",
-            "body": {"text": texto_msg},
-            "action": {"buttons": botones_list}
+            "body": {"text": "👋 Bienvenido a Marisco Alegre 🦐\n\n¿Qué deseas pedir?"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "comida", "title": "🍽 Comida"}},
+                    {"type": "reply", "reply": {"id": "bebidas", "title": "🥤 Bebidas"}},
+                    {"type": "reply", "reply": {"id": "pedido", "title": "🧾 Pedido"}}
+                ]
+            }
         }
     })
 
-def lista(num, titulo, secciones):
+def menu_categorias(num):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": num,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "Selecciona categoría"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "camarones", "title": "Camarones"}},
+                    {"type": "reply", "reply": {"id": "pulpo", "title": "Pulpo"}},
+                    {"type": "reply", "reply": {"id": "filete", "title": "Filete"}}
+                ]
+            }
+        }
+    })
+
+def menu_bebidas(num):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": num,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "Selecciona bebida"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "refrescos", "title": "🥤 Refrescos"}},
+                    {"type": "reply", "reply": {"id": "micheladas", "title": "🍺 Micheladas"}},
+                    {"type": "reply", "reply": {"id": "cervezas", "title": "🍻 Cervezas"}}
+                ]
+            }
+        }
+    })
+
+def menu_productos(num, cat):
+    rows = [
+        {"id": k, "title": v["nombre"], "description": f"${v['precio']}"}
+        for k, v in MENU.items() if v["cat"] == cat
+    ]
+
     enviar({
         "messaging_product": "whatsapp",
         "to": num,
         "type": "interactive",
         "interactive": {
             "type": "list",
-            "body": {"text": titulo},
+            "body": {"text": cat.upper()},
             "action": {
                 "button": "Ver opciones",
-                "sections": secciones
+                "sections": [{"title": "Menú", "rows": rows}]
+            }
+        }
+    })
+
+def menu_acciones(num):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": num,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "¿Qué deseas hacer?"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "seguir", "title": "➕ Seguir"}},
+                    {"type": "reply", "reply": {"id": "finalizar", "title": "✅ Finalizar"}},
+                    {"type": "reply", "reply": {"id": "vaciar", "title": "🗑 Vaciar"}}
+                ]
             }
         }
     })
@@ -217,161 +278,124 @@ def webhook():
             return request.args.get("hub.challenge")
         return "error", 403
 
+    data = request.json
+
     try:
-        data = request.json
         value = data["entry"][0]["changes"][0]["value"]
 
         if "messages" not in value:
             return "ok", 200
 
         msg = value["messages"][0]
-        numero = msg["from"]
+        num = msg["from"]
 
-        if numero not in usuarios:
-            usuarios[numero] = {
-                "estado": "inicio",
-                "items": [],
-                "cerrado": False
-            }
+        if num not in usuarios:
+            usuarios[num] = {"paso": "inicio", "items": [], "activo": True}
 
-        u = usuarios[numero]
+        u = usuarios[num]
 
-        # 🚫 SI YA DIJO GRACIAS
-        if u.get("cerrado"):
+        # 🔥 SI YA TERMINÓ → NO RESPONDE MÁS
+        if not u.get("activo", True):
             return "ok", 200
 
-        # =========================
-        # TEXTO
-        # =========================
+        # ========= INTERACTIVE =========
+        if "interactive" in msg:
+
+            if "list_reply" in msg["interactive"]:
+                seleccion = msg["interactive"]["list_reply"]["id"]
+            else:
+                seleccion = msg["interactive"]["button_reply"]["id"]
+
+            if seleccion in MENU:
+                p = MENU[seleccion]
+                u["temp"] = p
+                u["paso"] = "cantidad"
+                texto(num, f"¿Cuántos {p['nombre']} necesitas?")
+
+            elif seleccion == "comida":
+                menu_categorias(num)
+
+            elif seleccion in ["camarones","pulpo","filete"]:
+                menu_productos(num, seleccion)
+
+            elif seleccion == "bebidas":
+                menu_bebidas(num)
+
+            elif seleccion in ["refrescos","micheladas","cervezas"]:
+                menu_productos(num, seleccion)
+
+            elif seleccion == "seguir":
+                menu_inicio(num)
+
+            elif seleccion == "vaciar":
+                u["items"] = []
+                texto(num, "🗑 Pedido vaciado")
+                menu_inicio(num)
+
+            elif seleccion == "finalizar":
+                u["paso"] = "nombre"
+                texto(num, "👤 Ingresa tu nombre:")
+
+        # ========= TEXTO =========
         if "text" in msg:
-            texto_usuario = msg["text"]["body"].lower()
+            t = msg["text"]["body"].lower()
 
-            if "gracias" in texto_usuario:
-                texto(numero, "🙏 De nada, que tengas un excelente día")
-                u["cerrado"] = True
+            # RESPUESTA FINAL
+            if "gracias" in t:
+                texto(num, "De nada 😊 que tengas un excelente día")
+                u["activo"] = False
                 return "ok", 200
 
-            if texto_usuario in ["hola", "menu"]:
-                botones(numero, "👋 Bienvenido a Marisco Alegre 🦐\n¿Qué deseas pedir?", [
-                    {"type":"reply","reply":{"id":"comida","title":"🍽 Comida"}},
-                    {"type":"reply","reply":{"id":"bebidas","title":"🥤 Bebidas"}},
-                    {"type":"reply","reply":{"id":"pedido","title":"🧾 Pedido"}}
-                ])
-                return "ok", 200
-
-            if u["estado"] == "cantidad":
-                cantidad = int(texto_usuario)
-                prod = u["producto"]
+            if u["paso"] == "cantidad":
+                cant = int(t)
+                p = u["temp"]
 
                 u["items"].append({
-                    "nombre": prod[0],
-                    "precio": prod[1],
-                    "cantidad": cantidad
+                    "nombre": p["nombre"],
+                    "precio": p["precio"],
+                    "cantidad": cant
                 })
 
                 total = sum(i["precio"]*i["cantidad"] for i in u["items"])
 
-                resumen = "\n".join([f"• {i['nombre']} x{i['cantidad']}" for i in u["items"]])
+                resumen = "\n".join([f"{i['cantidad']} {i['nombre']}" for i in u["items"]])
 
-                texto(numero, f"🧾 Tu pedido:\n{resumen}\n\n💰 Total: ${total}")
+                texto(num, f"✅ Agregado\n\n{resumen}\n\n💰 Total: ${total}")
 
-                botones(numero, "¿Qué deseas hacer?", [
-                    {"type":"reply","reply":{"id":"seguir","title":"➕ Seguir"}},
-                    {"type":"reply","reply":{"id":"finalizar","title":"✅ Finalizar"}},
-                    {"type":"reply","reply":{"id":"vaciar","title":"🗑 Vaciar"}}
-                ])
+                u["paso"] = "inicio"
+                menu_acciones(num)
 
-                u["estado"] = "menu"
+            elif u["paso"] == "nombre":
+                u["nombre"] = t
+                u["paso"] = "direccion"
+                texto(num, "📍 Dirección:")
 
-        # =========================
-        # BOTONES
-        # =========================
-        if "interactive" in msg:
-            data = msg["interactive"]
+            elif u["paso"] == "direccion":
+                u["direccion"] = t
+                u["paso"] = "telefono"
+                texto(num, "📞 Teléfono:")
 
-            if data["type"] == "button_reply":
-                opcion = data["button_reply"]["id"]
-
-                if opcion == "seguir":
-                    botones(numero, "¿Qué deseas agregar?", [
-                        {"type":"reply","reply":{"id":"comida","title":"🍽 Comida"}},
-                        {"type":"reply","reply":{"id":"bebidas","title":"🥤 Bebidas"}}
-                    ])
-
-                elif opcion == "vaciar":
-                    u["items"] = []
-                    texto(numero, "🗑 Pedido vaciado")
-
-                elif opcion == "finalizar":
-                    texto(numero, "👤 Ingresa tu nombre:")
-                    u["estado"] = "nombre"
-
-                elif opcion in ["comida","bebidas"]:
-                    secciones = []
-
-                    for cat in MENU:
-                        if opcion == "comida" and cat == "bebidas":
-                            continue
-                        if opcion == "bebidas" and cat != "bebidas":
-                            continue
-
-                        secciones.append({
-                            "title": cat.upper(),
-                            "rows": [
-                                {"id": f"{cat}|{k}", "title": v[0], "description": f"${v[1]}"}
-                                for k,v in MENU[cat].items()
-                            ]
-                        })
-
-                    lista(numero, "Selecciona opción", secciones)
-
-            elif data["type"] == "list_reply":
-                seleccion = data["list_reply"]["id"]
-
-                cat, prod = seleccion.split("|")
-                producto = MENU[cat][prod]
-
-                u["producto"] = producto
-                u["estado"] = "cantidad"
-
-                texto(numero, f"¿Cuántos {producto[0]} necesitas?")
-
-        # =========================
-        # DATOS CLIENTE
-        # =========================
-        if "text" in msg:
-
-            if u["estado"] == "nombre":
-                u["cliente"] = msg["text"]["body"]
-                texto(numero, "📍 Dirección:")
-                u["estado"] = "direccion"
-
-            elif u["estado"] == "direccion":
-                u["direccion"] = msg["text"]["body"]
-                texto(numero, "📞 Teléfono:")
-                u["estado"] = "telefono"
-
-            elif u["estado"] == "telefono":
-                u["telefono"] = msg["text"]["body"]
+            elif u["paso"] == "telefono":
 
                 total = sum(i["precio"]*i["cantidad"] for i in u["items"])
 
                 folio = guardar_pedido({
-                    "cliente": u["cliente"],
-                    "telefono": u["telefono"],
+                    "cliente": u["nombre"],
+                    "telefono": t,
                     "direccion": u["direccion"],
                     "total": total,
-                    "estado": "nuevo",
                     "items": u["items"]
                 })
 
-                texto(numero, f"✅ Pedido #{folio} confirmado\n¡Gracias!")
+                texto(num, f"✅ Pedido #{folio} confirmado\n\nGracias por tu compra 🙌")
 
-                usuarios[numero] = {"estado":"inicio","items":[]}
+                usuarios[num] = {"paso": "inicio", "items": [], "activo": True}
 
-    except Exception:
-        print("🔥 ERROR WEBHOOK:")
-        traceback.print_exc()
+            else:
+                menu_inicio(num)
+
+    except Exception as e:
+        print("ERROR:", e)
 
     return "ok", 200
 
