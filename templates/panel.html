@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Panel PRO</title>
+<title>Panel PRO Restaurante</title>
 
 <style>
 body{
@@ -17,8 +17,9 @@ h1{margin:20px;}
 .topbar{
     display:flex;
     justify-content:center;
-    gap:15px;
+    gap:10px;
     margin-bottom:20px;
+    flex-wrap:wrap;
 }
 
 .stats{
@@ -51,7 +52,13 @@ h1{margin:20px;}
     margin:10px;
     padding:12px;
     border-radius:10px;
+    border-left:5px solid transparent;
 }
+
+.nuevo{ border-left:5px solid red; }
+.preparando{ border-left:5px solid orange; }
+.enviado{ border-left:5px solid blue; }
+.entregado{ border-left:5px solid green; }
 
 .detalle{
     font-size:12px;
@@ -71,6 +78,7 @@ button{
 .env{background:#0066ff;color:white;}
 .ent{background:green;color:white;}
 .add{background:black;color:white;}
+.clean{background:#999;color:white;}
 
 .modal{
     display:none;
@@ -94,15 +102,28 @@ input,select{
     margin:5px;
     width:90%;
 }
+
+/* 🔔 NOTIFICACIÓN */
+.toast{
+    position:fixed;
+    top:20px;
+    right:20px;
+    background:black;
+    color:white;
+    padding:12px;
+    border-radius:8px;
+    display:none;
+}
 </style>
 </head>
 
 <body>
 
-<h1>🔥 PANEL PRO 🔥</h1>
+<h1>🔥 PANEL RESTAURANTE 🔥</h1>
 
 <div class="topbar">
 <button class="add" onclick="abrirModal()">➕ Pedido Manual</button>
+<button class="clean" onclick="limpiar()">🧹 Limpiar</button>
 </div>
 
 <div class="stats">
@@ -113,19 +134,23 @@ input,select{
 </div>
 
 <div class="columns">
-
 <div class="col"><h3>🆕 Nuevos</h3><div id="nuevo"></div></div>
 <div class="col"><h3>🍳 Preparando</h3><div id="preparando"></div></div>
 <div class="col"><h3>🚚 Enviados</h3><div id="enviado"></div></div>
 <div class="col"><h3>✅ Entregados</h3><div id="entregado"></div></div>
-
 </div>
 
-<!-- MODAL PRO -->
+<!-- 🔔 SONIDO -->
+<audio id="audio" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
+
+<!-- 🔔 TOAST -->
+<div class="toast" id="toast">🆕 Nuevo pedido</div>
+
+<!-- MODAL (igual al tuyo) -->
 <div class="modal" id="modal">
 <div class="modal-box">
 
-<h3 id="titulo">Nuevo Pedido</h3>
+<h3>Nuevo Pedido</h3>
 
 <div id="cliente_step">
 <input id="cliente" placeholder="Nombre">
@@ -161,6 +186,7 @@ input,select{
 <script>
 
 let carrito=[];
+let ultimoTotal=0;
 
 const MENU={
 platillos:{
@@ -175,39 +201,21 @@ bebidas:{
 }
 };
 
-function abrirModal(){
-document.getElementById("modal").style.display="block";
-}
+function abrirModal(){ modal.style.display="block"; }
+function cerrarModal(){ modal.style.display="none"; carrito=[]; updateResumen(); }
 
-function cerrarModal(){
-document.getElementById("modal").style.display="none";
-carrito=[];
-updateResumen();
-}
-
-function irMenu(){
-cliente_step.style.display="none";
-menu_step.style.display="block";
-}
-
-function volverCliente(){
-menu_step.style.display="none";
-cliente_step.style.display="block";
-}
+function irMenu(){ cliente_step.style.display="none"; menu_step.style.display="block"; }
+function volverCliente(){ menu_step.style.display="none"; cliente_step.style.display="block"; }
 
 function mostrar(tipo){
-
 menu_step.style.display="none";
 productos_step.style.display="block";
 
-let select=document.getElementById("producto");
-select.innerHTML="";
-
-for(let item in MENU[tipo]){
-select.innerHTML+=`<option value="${MENU[tipo][item]}">${item} - $${MENU[tipo][item]}</option>`;
+producto.innerHTML="";
+for(let i in MENU[tipo]){
+producto.innerHTML+=`<option value="${MENU[tipo][i]}">${i} - $${MENU[tipo][i]}</option>`;
 }
-
-document.getElementById("tipo").innerText=tipo;
+tipo.innerText=tipo;
 }
 
 function volverMenu(){
@@ -216,10 +224,8 @@ menu_step.style.display="block";
 }
 
 function agregar(){
-
-let select=document.getElementById("producto");
-let nombre=select.options[select.selectedIndex].text;
-let precio=parseInt(select.value);
+let nombre=producto.options[producto.selectedIndex].text;
+let precio=parseInt(producto.value);
 let cantidad=parseInt(document.getElementById("cantidad").value);
 
 carrito.push({nombre,precio,cantidad});
@@ -227,7 +233,6 @@ updateResumen();
 }
 
 function updateResumen(){
-
 let html="<b>Pedido:</b><br>";
 let total=0;
 
@@ -236,14 +241,20 @@ html+=`${p.nombre} x${p.cantidad}<br>`;
 total+=p.precio*p.cantidad;
 });
 
-html+=`<br><b>Total: $${total}</b>`;
-document.getElementById("resumen").innerHTML=html;
+html+=`<br><b>Total: $${total.toLocaleString()}</b>`;
+resumen.innerHTML=html;
 }
 
 async function guardar(){
 
 let cliente=document.getElementById("cliente").value;
 let telefono=document.getElementById("telefono").value;
+
+if(!cliente || !telefono){
+alert("Faltan datos");
+return;
+}
+
 let direccion=document.getElementById("direccion").value;
 
 let total=0;
@@ -252,15 +263,10 @@ carrito.forEach(p=> total+=p.precio*p.cantidad);
 await fetch("/nuevo_manual",{
 method:"POST",
 headers:{'Content-Type':'application/json'},
-body:JSON.stringify({
-cliente,
-telefono,
-direccion,
-total,
-items:carrito
-})
+body:JSON.stringify({cliente,telefono,direccion,total,items:carrito})
 });
 
+alert("✅ Pedido creado");
 cerrarModal();
 cargar();
 }
@@ -270,6 +276,14 @@ async function cargar(){
 let res=await fetch("/pedidos");
 let data=await res.json();
 
+// 🔔 NUEVO PEDIDO
+if(data.length > ultimoTotal){
+audio.play();
+toast.style.display="block";
+setTimeout(()=>toast.style.display="none",2000);
+}
+ultimoTotal=data.length;
+
 nuevo.innerHTML="";
 preparando.innerHTML="";
 enviado.innerHTML="";
@@ -277,8 +291,9 @@ entregado.innerHTML="";
 
 data.forEach(p=>{
 
-let botones="";
+let clase=p.estado;
 
+let botones="";
 if(p.estado=="nuevo"){
 botones=`<button class="prep" onclick="estado(${p.folio},'preparando')">Preparando</button>`;
 }
@@ -292,22 +307,19 @@ else{
 botones=`<small>Finalizado</small>`;
 }
 
-let detalleHTML="";
-
-if(p.detalle){
-p.detalle.forEach(i=>{
-detalleHTML+=`${i.nombre} x${i.cantidad}<br>`;
+let detalle="";
+p.detalle?.forEach(i=>{
+detalle+=`${i.nombre} x${i.cantidad}<br>`;
 });
-}
 
 let html=`
-<div class="pedido">
+<div class="pedido ${clase}">
 <b>#${p.folio}</b><br>
 ${p.cliente}<br>
 📞 ${p.telefono || ""}<br>
 📍 ${p.direccion || ""}<br>
-💰 $${p.total}<br>
-<div class="detalle">${detalleHTML}</div>
+💰 $${p.total.toLocaleString()}<br>
+<div class="detalle">${detalle}</div>
 ${botones}
 </div>
 `;
@@ -322,7 +334,7 @@ else entregado.innerHTML+=html;
 let s=await fetch("/stats");
 let stats=await s.json();
 
-ventas.innerText=stats.ventas;
+ventas.innerText=stats.ventas.toLocaleString();
 pedidos.innerText=stats.pedidos;
 prep.innerText=stats.preparando;
 env.innerText=stats.enviados;
@@ -331,6 +343,18 @@ env.innerText=stats.enviados;
 
 function estado(id,e){
 fetch(`/estado/${id}/${e}`).then(()=>cargar());
+}
+
+async function limpiar(){
+let res=await fetch("/pedidos");
+let data=await res.json();
+
+for(let p of data){
+if(p.estado=="entregado"){
+await fetch(`/estado/${p.folio}/finalizado`);
+}
+}
+cargar();
 }
 
 setInterval(cargar,3000);
