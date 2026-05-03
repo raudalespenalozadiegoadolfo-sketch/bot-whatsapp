@@ -12,15 +12,12 @@ body{
     padding:20px;
 }
 
-h1{
-    margin:20px;
-}
+h1{margin:20px;}
 
 .topbar{
     display:flex;
     justify-content:center;
     gap:15px;
-    flex-wrap:wrap;
     margin-bottom:20px;
 }
 
@@ -29,7 +26,6 @@ h1{
     justify-content:space-around;
     gap:15px;
     flex-wrap:wrap;
-    margin-bottom:25px;
 }
 
 .card{
@@ -37,12 +33,10 @@ h1{
     padding:15px;
     border-radius:10px;
     width:160px;
-    box-shadow:0 0 10px rgba(0,0,0,.1);
 }
 
 .columns{
     display:flex;
-    justify-content:space-around;
     gap:10px;
     flex-wrap:wrap;
 }
@@ -57,37 +51,32 @@ h1{
     margin:10px;
     padding:12px;
     border-radius:10px;
-    box-shadow:0 0 8px rgba(0,0,0,.08);
+}
+
+.detalle{
+    font-size:12px;
+    text-align:left;
+    margin-top:5px;
 }
 
 button{
     margin:4px;
-    padding:7px 10px;
+    padding:7px;
     border:none;
     border-radius:6px;
     cursor:pointer;
-    font-size:13px;
 }
 
-.prep{ background:orange; color:black; }
-.env{ background:#0066ff; color:white; }
-.ent{ background:green; color:white; }
-.add{ background:#111; color:white; }
-
-input{
-    padding:8px;
-    margin:5px;
-    border-radius:6px;
-    border:1px solid #ccc;
-}
+.prep{background:orange;}
+.env{background:#0066ff;color:white;}
+.ent{background:green;color:white;}
+.add{background:black;color:white;}
 
 .modal{
     display:none;
     position:fixed;
-    top:0;
-    left:0;
-    width:100%;
-    height:100%;
+    top:0;left:0;
+    width:100%;height:100%;
     background:rgba(0,0,0,.5);
 }
 
@@ -100,10 +89,10 @@ input{
     border-radius:12px;
 }
 
-select{
+input,select{
     padding:8px;
-    width:90%;
     margin:5px;
+    width:90%;
 }
 </style>
 </head>
@@ -113,61 +102,57 @@ select{
 <h1>🔥 PANEL PRO 🔥</h1>
 
 <div class="topbar">
-    <button class="add" onclick="abrirModal()">➕ Pedido Manual</button>
+<button class="add" onclick="abrirModal()">➕ Pedido Manual</button>
 </div>
 
 <div class="stats">
-    <div class="card">Ventas: <span id="ventas">0</span></div>
-    <div class="card">Pedidos: <span id="pedidos">0</span></div>
-    <div class="card">Preparando: <span id="prep">0</span></div>
-    <div class="card">Enviados: <span id="env">0</span></div>
+<div class="card">Ventas: <span id="ventas">0</span></div>
+<div class="card">Pedidos: <span id="pedidos">0</span></div>
+<div class="card">Preparando: <span id="prep">0</span></div>
+<div class="card">Enviados: <span id="env">0</span></div>
 </div>
 
 <div class="columns">
 
-<div class="col">
-<h3>🆕 Nuevos</h3>
-<div id="nuevo"></div>
-</div>
-
-<div class="col">
-<h3>🍳 Preparando</h3>
-<div id="preparando"></div>
-</div>
-
-<div class="col">
-<h3>🚚 Enviados</h3>
-<div id="enviado"></div>
-</div>
-
-<div class="col">
-<h3>✅ Entregados</h3>
-<div id="entregado"></div>
-</div>
+<div class="col"><h3>🆕 Nuevos</h3><div id="nuevo"></div></div>
+<div class="col"><h3>🍳 Preparando</h3><div id="preparando"></div></div>
+<div class="col"><h3>🚚 Enviados</h3><div id="enviado"></div></div>
+<div class="col"><h3>✅ Entregados</h3><div id="entregado"></div></div>
 
 </div>
 
-<!-- MODAL -->
+<!-- MODAL PRO -->
 <div class="modal" id="modal">
 <div class="modal-box">
 
-<h2>Nuevo Pedido</h2>
+<h3 id="titulo">Nuevo Pedido</h3>
 
-<input id="cliente" placeholder="Nombre"><br>
-<input id="telefono" placeholder="Teléfono"><br>
+<div id="cliente_step">
+<input id="cliente" placeholder="Nombre">
+<input id="telefono" placeholder="Teléfono">
+<input id="direccion" placeholder="Dirección">
+<button onclick="irMenu()">Ir al menú ➡️</button>
+</div>
 
-<select id="producto">
-<option value="180">Ceviche Pescado - $180</option>
-<option value="200">Ceviche Camarón - $200</option>
-<option value="190">Aguachile Verde - $190</option>
-<option value="220">Coctel Mixto - $220</option>
-<option value="30">Coca Cola - $30</option>
-<option value="25">Pepsi - $25</option>
-</select><br>
+<div id="menu_step" style="display:none;">
+<button onclick="mostrar('platillos')">🍽 Platillos</button>
+<button onclick="mostrar('bebidas')">🥤 Bebidas</button>
+<br><br>
+<button onclick="volverCliente()">⬅ Volver</button>
+</div>
 
-<input id="cantidad" type="number" value="1" min="1"><br>
+<div id="productos_step" style="display:none;">
+<h4 id="tipo"></h4>
+<select id="producto"></select>
+<input id="cantidad" type="number" value="1">
+<button onclick="agregar()">➕ Agregar</button>
+<br><br>
+<button onclick="volverMenu()">⬅ Regresar</button>
+</div>
 
-<button class="prep" onclick="guardarManual()">Guardar</button>
+<div id="resumen"></div>
+
+<button class="prep" onclick="guardar()">Guardar Pedido</button>
 <button onclick="cerrarModal()">Cerrar</button>
 
 </div>
@@ -175,30 +160,104 @@ select{
 
 <script>
 
+let carrito=[];
+
+const MENU={
+platillos:{
+"Ceviche Pescado":180,
+"Ceviche Camarón":200,
+"Aguachile Verde":190,
+"Coctel Mixto":220
+},
+bebidas:{
+"Coca Cola":30,
+"Pepsi":25
+}
+};
+
 function abrirModal(){
 document.getElementById("modal").style.display="block";
 }
 
 function cerrarModal(){
 document.getElementById("modal").style.display="none";
+carrito=[];
+updateResumen();
 }
 
-async function guardarManual(){
+function irMenu(){
+cliente_step.style.display="none";
+menu_step.style.display="block";
+}
+
+function volverCliente(){
+menu_step.style.display="none";
+cliente_step.style.display="block";
+}
+
+function mostrar(tipo){
+
+menu_step.style.display="none";
+productos_step.style.display="block";
+
+let select=document.getElementById("producto");
+select.innerHTML="";
+
+for(let item in MENU[tipo]){
+select.innerHTML+=`<option value="${MENU[tipo][item]}">${item} - $${MENU[tipo][item]}</option>`;
+}
+
+document.getElementById("tipo").innerText=tipo;
+}
+
+function volverMenu(){
+productos_step.style.display="none";
+menu_step.style.display="block";
+}
+
+function agregar(){
+
+let select=document.getElementById("producto");
+let nombre=select.options[select.selectedIndex].text;
+let precio=parseInt(select.value);
+let cantidad=parseInt(document.getElementById("cantidad").value);
+
+carrito.push({nombre,precio,cantidad});
+updateResumen();
+}
+
+function updateResumen(){
+
+let html="<b>Pedido:</b><br>";
+let total=0;
+
+carrito.forEach(p=>{
+html+=`${p.nombre} x${p.cantidad}<br>`;
+total+=p.precio*p.cantidad;
+});
+
+html+=`<br><b>Total: $${total}</b>`;
+document.getElementById("resumen").innerHTML=html;
+}
+
+async function guardar(){
 
 let cliente=document.getElementById("cliente").value;
 let telefono=document.getElementById("telefono").value;
-let precio=parseInt(document.getElementById("producto").value);
-let cantidad=parseInt(document.getElementById("cantidad").value);
+let direccion=document.getElementById("direccion").value;
 
-let total=precio*cantidad;
+let total=0;
+carrito.forEach(p=> total+=p.precio*p.cantidad);
 
 await fetch("/nuevo_manual",{
 method:"POST",
 headers:{'Content-Type':'application/json'},
 body:JSON.stringify({
-cliente:cliente,
-telefono:telefono,
-total:total
+cliente,
+telefono,
+direccion,
+total,
+items:carrito
 })
 });
 
@@ -208,84 +267,70 @@ cargar();
 
 async function cargar(){
 
-try{
-
 let res=await fetch("/pedidos");
 let data=await res.json();
 
-document.getElementById("nuevo").innerHTML="";
-document.getElementById("preparando").innerHTML="";
-document.getElementById("enviado").innerHTML="";
-document.getElementById("entregado").innerHTML="";
+nuevo.innerHTML="";
+preparando.innerHTML="";
+enviado.innerHTML="";
+entregado.innerHTML="";
 
 data.forEach(p=>{
 
 let botones="";
 
 if(p.estado=="nuevo"){
-botones=`
-<button class="prep" onclick="estado(${p.folio},'preparando')">Preparando</button>
-`;
+botones=`<button class="prep" onclick="estado(${p.folio},'preparando')">Preparando</button>`;
 }
-
 else if(p.estado=="preparando"){
-botones=`
-<button class="env" onclick="estado(${p.folio},'enviado')">Enviar</button>
-`;
+botones=`<button class="env" onclick="estado(${p.folio},'enviado')">Enviar</button>`;
 }
-
 else if(p.estado=="enviado"){
-botones=`
-<button class="ent" onclick="estado(${p.folio},'entregado')">Entregar</button>
-`;
+botones=`<button class="ent" onclick="estado(${p.folio},'entregado')">Entregar</button>`;
 }
-
 else{
 botones=`<small>Finalizado</small>`;
+}
+
+let detalleHTML="";
+
+if(p.detalle){
+p.detalle.forEach(i=>{
+detalleHTML+=`${i.nombre} x${i.cantidad}<br>`;
+});
 }
 
 let html=`
 <div class="pedido">
 <b>#${p.folio}</b><br>
 ${p.cliente}<br>
-📞 ${p.telefono || ''}<br>
+📞 ${p.telefono || ""}<br>
+📍 ${p.direccion || ""}<br>
 💰 $${p.total}<br>
+<div class="detalle">${detalleHTML}</div>
 ${botones}
 </div>
 `;
 
-if(p.estado=="nuevo"){
-document.getElementById("nuevo").innerHTML+=html;
-}
-else if(p.estado=="preparando"){
-document.getElementById("preparando").innerHTML+=html;
-}
-else if(p.estado=="enviado"){
-document.getElementById("enviado").innerHTML+=html;
-}
-else{
-document.getElementById("entregado").innerHTML+=html;
-}
+if(p.estado=="nuevo") nuevo.innerHTML+=html;
+else if(p.estado=="preparando") preparando.innerHTML+=html;
+else if(p.estado=="enviado") enviado.innerHTML+=html;
+else entregado.innerHTML+=html;
 
 });
 
 let s=await fetch("/stats");
 let stats=await s.json();
 
-document.getElementById("ventas").innerText=stats.ventas;
-document.getElementById("pedidos").innerText=stats.pedidos;
-document.getElementById("prep").innerText=stats.preparando;
-document.getElementById("env").innerText=stats.enviados;
-
-}catch(e){
-console.log(e);
-}
+ventas.innerText=stats.ventas;
+pedidos.innerText=stats.pedidos;
+prep.innerText=stats.preparando;
+env.innerText=stats.enviados;
 
 }
 
-function estado(id,estadoPedido){
-fetch(`/estado/${id}/${estadoPedido}`)
-.then(()=>cargar());
+function estado(id,e){
+fetch(`/estado/${id}/${e}`).then(()=>cargar());
 }
 
 setInterval(cargar,3000);
