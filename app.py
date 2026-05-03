@@ -17,9 +17,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 usuarios = {}
 
 # =========================
-# MENU REAL
+# MENU COMPLETO
 # =========================
 MENU = {
+
     # CAMARONES
     "cam_diabla": {"nombre": "Camarones a la Diabla", "precio": 180, "cat": "camarones"},
     "cam_emp": {"nombre": "Camarones Empanizados", "precio": 190, "cat": "camarones"},
@@ -41,10 +42,20 @@ MENU = {
     "coctel_callo": {"nombre": "Coctel Callo", "precio": 250, "cat": "coctel"},
     "coctel_mixto": {"nombre": "Coctel Mixto", "precio": 220, "cat": "coctel"},
 
-    # BEBIDAS
-    "coca": {"nombre": "Coca Cola", "precio": 30, "cat": "bebidas"},
-    "pepsi": {"nombre": "Pepsi", "precio": 25, "cat": "bebidas"},
-    "sangria": {"nombre": "Sangría", "precio": 25, "cat": "bebidas"},
+    # REFRESCOS
+    "coca": {"nombre": "Coca Cola", "precio": 30, "cat": "refrescos"},
+    "pepsi": {"nombre": "Pepsi", "precio": 25, "cat": "refrescos"},
+    "sangria": {"nombre": "Sangría", "precio": 25, "cat": "refrescos"},
+
+    # MICHELADAS
+    "michelada_cam": {"nombre": "Michelada Camarón", "precio": 100, "cat": "micheladas"},
+    "michelada_clam": {"nombre": "Michelada Clamato", "precio": 80, "cat": "micheladas"},
+    "michelada_tam": {"nombre": "Michelada Tamarindo", "precio": 90, "cat": "micheladas"},
+
+    # CERVEZAS
+    "corona": {"nombre": "Corona", "precio": 40, "cat": "cervezas"},
+    "tecate": {"nombre": "Tecate", "precio": 35, "cat": "cervezas"},
+    "indio": {"nombre": "Indio", "precio": 30, "cat": "cervezas"},
 }
 
 # =========================
@@ -137,17 +148,14 @@ def pedidos():
 def estado(folio, estado):
     conn = get_db()
     cur = conn.cursor()
-
     cur.execute("UPDATE pedidos SET estado=%s WHERE id=%s", (estado, folio))
-
     conn.commit()
     cur.close()
     conn.close()
-
     return "ok"
 
 # =========================
-# WHATSAPP ENVIO
+# ENVIO
 # =========================
 def enviar(data):
     url = f"https://graph.facebook.com/v19.0/{PHONE_ID}/messages"
@@ -198,6 +206,24 @@ def menu_categorias(num):
                     {"type": "reply", "reply": {"id": "camarones", "title": "Camarones"}},
                     {"type": "reply", "reply": {"id": "pulpo", "title": "Pulpo"}},
                     {"type": "reply", "reply": {"id": "filete", "title": "Filete"}}
+                ]
+            }
+        }
+    })
+
+def menu_bebidas(num):
+    enviar({
+        "messaging_product": "whatsapp",
+        "to": num,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "Selecciona bebida"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "refrescos", "title": "🥤 Refrescos"}},
+                    {"type": "reply", "reply": {"id": "micheladas", "title": "🍺 Micheladas"}},
+                    {"type": "reply", "reply": {"id": "cervezas", "title": "🍻 Cervezas"}}
                 ]
             }
         }
@@ -264,9 +290,13 @@ def webhook():
         num = msg["from"]
 
         if num not in usuarios:
-            usuarios[num] = {"paso": "inicio", "items": []}
+            usuarios[num] = {"paso": "inicio", "items": [], "activo": True}
 
         u = usuarios[num]
+
+        # 🔥 SI YA TERMINÓ → NO RESPONDE MÁS
+        if not u.get("activo", True):
+            return "ok", 200
 
         # ========= INTERACTIVE =========
         if "interactive" in msg:
@@ -276,16 +306,12 @@ def webhook():
             else:
                 seleccion = msg["interactive"]["button_reply"]["id"]
 
-            # PRODUCTO
             if seleccion in MENU:
                 p = MENU[seleccion]
-
                 u["temp"] = p
                 u["paso"] = "cantidad"
-
                 texto(num, f"¿Cuántos {p['nombre']} necesitas?")
 
-            # FLUJO
             elif seleccion == "comida":
                 menu_categorias(num)
 
@@ -293,7 +319,10 @@ def webhook():
                 menu_productos(num, seleccion)
 
             elif seleccion == "bebidas":
-                menu_productos(num, "bebidas")
+                menu_bebidas(num)
+
+            elif seleccion in ["refrescos","micheladas","cervezas"]:
+                menu_productos(num, seleccion)
 
             elif seleccion == "seguir":
                 menu_inicio(num)
@@ -309,12 +338,16 @@ def webhook():
 
         # ========= TEXTO =========
         if "text" in msg:
+            t = msg["text"]["body"].lower()
 
-            t = msg["text"]["body"]
+            # RESPUESTA FINAL
+            if "gracias" in t:
+                texto(num, "De nada 😊 que tengas un excelente día")
+                u["activo"] = False
+                return "ok", 200
 
             if u["paso"] == "cantidad":
                 cant = int(t)
-
                 p = u["temp"]
 
                 u["items"].append({
@@ -356,7 +389,7 @@ def webhook():
 
                 texto(num, f"✅ Pedido #{folio} confirmado\n\nGracias por tu compra 🙌")
 
-                usuarios[num] = {"paso": "inicio", "items": []}
+                usuarios[num] = {"paso": "inicio", "items": [], "activo": True}
 
             else:
                 menu_inicio(num)
